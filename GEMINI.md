@@ -90,6 +90,26 @@ Background security and integrity checks.
 - [x] **Secret Scanner:** Entropy-aware background scanning for leaked keys.
 - [x] **Health Rules:** Automated checks for missing GEMINI.md, high costs, and stale sessions.
 - [x] **Real-time Security Alerts:** Visual banners for critical leaks in active sessions.
+
+## 🚀 Next Steps & Structural Improvements
+
+### 1. Architectural Refactoring
+The project's core files (`parser.rs` and `ui.rs`) have grown significantly. To maintain high performance and scalability:
+- **`src/parser/` Module:** Decompose the parsing logic into specialized handlers (e.g., `session_handler.rs`, `mcp_handler.rs`, `token_handler.rs`).
+- **`src/ui/` Module:** Create a dedicated view-based architecture. Move session rendering to `explorer_view.rs`, and statistics to `stats_view.rs`.
+
+### 2. Enhanced Configuration (Theme Support)
+- **Theme Engine:** Implement a `Theme` struct allowing users to customize colors via a `themes.json` file.
+- **CLI Arguments:** Integrate `clap` to allow users to specify custom log paths, model pricing, or verbosity levels at startup.
+
+### 3. Reporting & Exports
+- **Markdown Export:** Allow users to export a specific AI session or a project-wide summary into a professional Markdown report.
+- **CSV/JSON Stats:** Provide raw data exports for advanced cost analysis in external tools.
+
+### 4. Interactive UX
+- **Advanced Filtering:** Add date-range filters and model-specific toggles to the main explorer.
+- **Session Diffing:** Implement a "diff" view to compare two similar AI turns or sessions.
+
 ## 🛠️ Tech Stack Notes
 - **Language:** Rust
 - **TUI:** [ratatui](https://github.com/ratatui-org/ratatui)
