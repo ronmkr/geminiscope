@@ -9,17 +9,24 @@ use anyhow::{Result, Context};
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::SystemTime;
 use crate::parser::health::HealthChecker;
 
 pub struct Parser {
     pub base_dir: PathBuf,
+    session_cache: Mutex<HashMap<PathBuf, (SystemTime, Session)>>,
 }
 
 impl Parser {
     pub fn new() -> Result<Self> {
         let home = std::env::var("HOME").context("HOME env var not set")?;
         let base_dir = Path::new(&home).join(".gemini").join("tmp");
-        Ok(Self { base_dir })
+        Ok(Self { 
+            base_dir,
+            session_cache: Mutex::new(HashMap::new()),
+        })
     }
 
     pub fn discover_projects(&self) -> Result<Vec<Project>> {
@@ -33,7 +40,7 @@ impl Parser {
                 if path.is_dir() {
                     let chats_dir = path.join("chats");
                     if chats_dir.exists() {
-                        if let Ok(sessions) = session::list_sessions(&path) {
+                        if let Ok(sessions) = session::list_sessions(&path, &self.session_cache) {
                             if sessions.is_empty() { continue; }
                             
                             let (memory_files, plan_files) = self.discover_files(&path);
@@ -54,7 +61,7 @@ impl Parser {
         // 2. Fallback: Check if current dir is a project
         let curr_dir = std::env::current_dir()?;
         if curr_dir.join("chats").exists() {
-             if let Ok(sessions) = session::list_sessions(&curr_dir) {
+             if let Ok(sessions) = session::list_sessions(&curr_dir, &self.session_cache) {
                 if !sessions.is_empty() && !projects.iter().any(|p| p.path == curr_dir.to_string_lossy().to_string()) {
                     let (memory_files, plan_files) = self.discover_files(&curr_dir);
                     projects.push(Project {
