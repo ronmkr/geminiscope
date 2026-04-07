@@ -178,7 +178,11 @@ impl App {
                     self.commit_setting_edit(save_tx);
                     self.is_editing_setting = false;
                 }
-                KeyCode::Char(c) => self.edit_input.push(c),
+                KeyCode::Char(c) => {
+                    if self.edit_input.len() < 256 {
+                        self.edit_input.push(c);
+                    }
+                }
                 KeyCode::Backspace => { self.edit_input.pop(); }
                 _ => {}
             }
@@ -195,8 +199,10 @@ impl App {
                     self.is_searching = false;
                 }
                 KeyCode::Char(c) => {
-                    self.search_query.push(c);
-                    self.list_state.select(Some(0));
+                    if self.search_query.len() < 256 {
+                        self.search_query.push(c);
+                        self.list_state.select(Some(0));
+                    }
                 }
                 KeyCode::Backspace => {
                     self.search_query.pop();
@@ -362,7 +368,11 @@ impl App {
             if !curr.get(key).map_or(false, |v| v.is_object()) {
                 curr[key.clone()] = serde_json::json!({});
             }
-            curr = curr.get_mut(key).unwrap();
+            if let Some(next) = curr.get_mut(key) {
+                curr = next;
+            } else {
+                return;
+            }
         }
     }
 
@@ -401,8 +411,24 @@ impl App {
                     if let Some(sess) = filtered.get(selected) {
                         if let Ok(json) = serde_json::to_string_pretty(sess) {
                             let filename = format!("geminiscope_session_{}.json", &sess.session_id[..8]);
-                            if std::fs::write(&filename, json).is_ok() {
-                                self.last_action_msg = Some((format!("󰄬 Exported to {}", filename), std::time::Instant::now()));
+                            
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::OpenOptionsExt;
+                                use std::io::Write;
+                                let mut options = std::fs::OpenOptions::new();
+                                options.write(true).create(true).truncate(true).mode(0o600);
+                                if let Ok(mut file) = options.open(&filename) {
+                                    if file.write_all(json.as_bytes()).is_ok() {
+                                        self.last_action_msg = Some((format!("󰄬 Exported (Private) to {}", filename), std::time::Instant::now()));
+                                    }
+                                }
+                            }
+                            #[cfg(not(unix))]
+                            {
+                                if std::fs::write(&filename, json).is_ok() {
+                                    self.last_action_msg = Some((format!("󰄬 Exported to {}", filename), std::time::Instant::now()));
+                                }
                             }
                         }
                     }

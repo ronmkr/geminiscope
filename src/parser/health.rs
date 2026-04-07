@@ -11,12 +11,12 @@ pub struct HealthChecker {
 impl HealthChecker {
     pub fn new() -> Self {
         let secret_regexes = vec![
-            ("Private Key", Regex::new(r"-----BEGIN [a-zA-Z\s]+ PRIVATE KEY-----").unwrap(), 0),
-            ("AWS Access Key", Regex::new(r"(?i)(AKIA[0-9A-Z]{16})").unwrap(), 1),
-            ("Auth Header", Regex::new(r"(?i)Authorization:\s*(?:Bearer|Basic)\s+([a-zA-Z0-9_=\-\.]{16,})").unwrap(), 1),
-            ("Platform Token", Regex::new(r"(ghp_|xox[bap]-|npm_|rk_live_|sk_live_|AIzaSy)[a-zA-Z0-9_\-]{20,}").unwrap(), 0),
-            ("API Key/Secret", Regex::new(r"(?i)(?:api_key|apikey|secret|token|password)[\s:=]+[\x22\x27]?([a-zA-Z0-9_\-\.]{16,})[\x22\x27]?").unwrap(), 1),
-            ("DB Connection", Regex::new(r"(?i)(?:postgres|mysql|redis|mongodb)://[a-zA-Z0-9_-]+:([a-zA-Z0-9_\-\.!@#$%^&*]+)@").unwrap(), 1),
+            ("Private Key", Regex::new(r"-----BEGIN [a-zA-Z\s]+ PRIVATE KEY-----").expect("Static Regex"), 0),
+            ("AWS Access Key", Regex::new(r"(?i)(AKIA[0-9A-Z]{16})").expect("Static Regex"), 1),
+            ("Auth Header", Regex::new(r"(?i)Authorization:\s*(?:Bearer|Basic)\s+([a-zA-Z0-9_=\-\.]{16,})").expect("Static Regex"), 1),
+            ("Platform Token", Regex::new(r"(ghp_|xox[bap]-|npm_|rk_live_|sk_live_|AIzaSy)[a-zA-Z0-9_\-]{20,}").expect("Static Regex"), 0),
+            ("API Key/Secret", Regex::new(r"(?i)(?:api_key|apikey|secret|token|password)[\s:=]+[\x22\x27]?([a-zA-Z0-9_\-\.]{16,})[\x22\x27]?").expect("Static Regex"), 1),
+            ("DB Connection", Regex::new(r"(?i)(?:postgres|mysql|redis|mongodb)://[a-zA-Z0-9_-]+:([a-zA-Z0-9_\-\.!@#$%^&*]+)@").expect("Static Regex"), 1),
         ];
         Self { secret_regexes }
     }

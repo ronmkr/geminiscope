@@ -44,6 +44,13 @@ AI logs can grow to several megabytes. Geminiscope maintains performance through
 - [ ] **Session Diffing**: Compare two AI turns to see how prompts or parameters changed.
 - [ ] **Remote MCP Dashboard**: Live health monitoring of remote MCP servers.
 
+### 3. Security & Hardening
+- [x] **Secure Persistence**: Implement 0600 permissions for `settings.json` and session exports.
+- [x] **Atomic Saves**: Use temp-file-and-rename for configuration to prevent corruption.
+- [x] **Path Sanitization**: Validate `.project_root` and discovery paths to prevent traversal.
+- [x] **Input Guardrails**: Add length limits to search and setting inputs to prevent memory DoS.
+- [x] **Panic Audit**: Replace remaining `.unwrap()` calls in UI/Parser with graceful error handling.
+
 ## 🛠️ Tech Stack Notes
 - **Language**: Rust
 - **TUI**: [ratatui](https://github.com/ratatui-org/ratatui)

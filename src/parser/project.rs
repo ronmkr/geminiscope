@@ -72,13 +72,19 @@ pub fn discover_files(project_tmp_path: &Path) -> (Vec<ProjectFile>, Vec<Project
     // 1. Check for .project_root to find actual workspace
     if let Ok(root_path_str) = fs::read_to_string(project_tmp_path.join(".project_root")) {
         let workspace_root = Path::new(root_path_str.trim());
-        let gemini_md = workspace_root.join("GEMINI.md");
-        if gemini_md.exists() {
-            memories.push(ProjectFile {
-                name: "Project GEMINI.md".to_string(),
-                path: gemini_md.to_string_lossy().to_string(),
-                category: "Memory".to_string(),
-            });
+        let home = std::env::var("HOME").unwrap_or_default();
+        let home_path = Path::new(&home);
+
+        // Basic security check: Ensure workspace is within HOME to prevent arbitrary traversal
+        if workspace_root.starts_with(home_path) && workspace_root.exists() {
+            let gemini_md = workspace_root.join("GEMINI.md");
+            if gemini_md.exists() {
+                memories.push(ProjectFile {
+                    name: "Project GEMINI.md".to_string(),
+                    path: gemini_md.to_string_lossy().to_string(),
+                    category: "Memory".to_string(),
+                });
+            }
         }
     }
 

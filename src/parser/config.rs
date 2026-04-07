@@ -46,7 +46,24 @@ pub fn parse_settings() -> Result<serde_json::Value> {
 pub fn save_settings(settings: &serde_json::Value) -> Result<()> {
     let home = std::env::var("HOME")?;
     let settings_path = Path::new(&home).join(".gemini").join("settings.json");
+    let temp_path = settings_path.with_extension("tmp");
     let data = serde_json::to_string_pretty(settings)?;
-    fs::write(settings_path, data)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        use std::io::Write;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true).mode(0o600);
+        let mut file = options.open(&temp_path)?;
+        file.write_all(data.as_bytes())?;
+    }
+
+    #[cfg(not(unix))]
+    {
+        fs::write(&temp_path, data)?;
+    }
+
+    fs::rename(temp_path, settings_path)?;
     Ok(())
 }

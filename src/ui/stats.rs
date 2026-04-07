@@ -25,7 +25,7 @@ pub fn get_stats_list_items<'a>(state: &'a State, sort_mode: ProjectSort) -> Vec
             projects.sort_by(|a, b| {
                 let a_cost = state.stats.projects.get(&a.name).map(|s| s.cost).unwrap_or(0.0);
                 let b_cost = state.stats.projects.get(&b.name).map(|s| s.cost).unwrap_or(0.0);
-                b_cost.partial_cmp(&a_cost).unwrap()
+                b_cost.partial_cmp(&a_cost).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
         ProjectSort::Tokens => {
@@ -77,7 +77,7 @@ pub fn render_stats_detail(f: &mut Frame, app: &App, area: Rect) {
             projects.sort_by(|a, b| {
                 let a_cost = state.stats.projects.get(&a.name).map(|s| s.cost).unwrap_or(0.0);
                 let b_cost = state.stats.projects.get(&b.name).map(|s| s.cost).unwrap_or(0.0);
-                b_cost.partial_cmp(&a_cost).unwrap()
+                b_cost.partial_cmp(&a_cost).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
         ProjectSort::Tokens => {

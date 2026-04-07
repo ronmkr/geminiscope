@@ -14,7 +14,10 @@ pub fn list_sessions(
     let mut sessions = Vec::new();
     if !chats_dir.exists() { return Ok(sessions); }
 
-    let mut cache_lock = cache.lock().unwrap();
+    let mut cache_lock = match cache.lock() {
+        Ok(lock) => lock,
+        Err(poisoned) => poisoned.into_inner(),
+    };
 
     for entry in fs::read_dir(chats_dir)? {
         let entry = entry?;
