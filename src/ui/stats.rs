@@ -8,7 +8,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn get_stats_list_items<'a>(state: &'a State, sort_mode: ProjectSort) -> Vec<ListItem<'a>> {
+pub fn get_stats_list_items(state: &State, sort_mode: ProjectSort) -> Vec<ListItem<'_>> {
     let mut projects = state.projects.clone();
 
     // Sorting logic
@@ -22,15 +22,15 @@ pub fn get_stats_list_items<'a>(state: &'a State, sort_mode: ProjectSort) -> Vec
         }
         ProjectSort::Cost => {
             projects.sort_by(|a, b| {
-                let a_cost = state.stats.projects.get(&a.name).map(|s| s.cost).unwrap_or(0.0);
-                let b_cost = state.stats.projects.get(&b.name).map(|s| s.cost).unwrap_or(0.0);
+                let a_cost = state.stats.projects.get(&a.name).map_or(0.0, |s| s.cost);
+                let b_cost = state.stats.projects.get(&b.name).map_or(0.0, |s| s.cost);
                 b_cost.partial_cmp(&a_cost).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
         ProjectSort::Tokens => {
             projects.sort_by(|a, b| {
-                let a_tokens = state.stats.projects.get(&a.name).map(|s| s.total_tokens).unwrap_or(0);
-                let b_tokens = state.stats.projects.get(&b.name).map(|s| s.total_tokens).unwrap_or(0);
+                let a_tokens = state.stats.projects.get(&a.name).map_or(0, |s| s.total_tokens);
+                let b_tokens = state.stats.projects.get(&b.name).map_or(0, |s| s.total_tokens);
                 b_tokens.cmp(&a_tokens)
             });
         }
@@ -74,15 +74,15 @@ pub fn render_stats_detail(f: &mut Frame, app: &App, area: Rect) {
         }
         ProjectSort::Cost => {
             projects.sort_by(|a, b| {
-                let a_cost = state.stats.projects.get(&a.name).map(|s| s.cost).unwrap_or(0.0);
-                let b_cost = state.stats.projects.get(&b.name).map(|s| s.cost).unwrap_or(0.0);
+                let a_cost = state.stats.projects.get(&a.name).map_or(0.0, |s| s.cost);
+                let b_cost = state.stats.projects.get(&b.name).map_or(0.0, |s| s.cost);
                 b_cost.partial_cmp(&a_cost).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
         ProjectSort::Tokens => {
             projects.sort_by(|a, b| {
-                let a_tokens = state.stats.projects.get(&a.name).map(|s| s.total_tokens).unwrap_or(0);
-                let b_tokens = state.stats.projects.get(&b.name).map(|s| s.total_tokens).unwrap_or(0);
+                let a_tokens = state.stats.projects.get(&a.name).map_or(0, |s| s.total_tokens);
+                let b_tokens = state.stats.projects.get(&b.name).map_or(0, |s| s.total_tokens);
                 b_tokens.cmp(&a_tokens)
             });
         }
@@ -114,7 +114,7 @@ pub fn render_stats_detail(f: &mut Frame, app: &App, area: Rect) {
 
     let mut markdown = format!("**Cost**: ${:.4} • **Tokens**: {}\n**Input**: {} • **Output**: {}\n### Model Usage\n", 
         stats_data.cost, stats_data.total_tokens, stats_data.input, stats_data.output);
-    for (m, c) in &stats_data.models { markdown.push_str(&format!("- **{}**: {} turns\n", m, c)); }
+    for (m, c) in &stats_data.models { markdown.push_str(&format!("- **{m}**: {c} turns\n")); }
 
     crate::ui::render_markdown(f, app, stats_chunks[1], &title, &markdown);
 }

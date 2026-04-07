@@ -1,16 +1,20 @@
-use crate::models::*;
+use crate::models::{Project, GlobalStats, ProjectStats};
 use std::collections::HashMap;
 
 pub fn calculate_stats(projects: &[Project]) -> GlobalStats {
     let mut gs = GlobalStats {
         projects: HashMap::new(),
-        overall: ProjectStats::default(),
+        overall: ProjectStats {
+            name: "Overall".to_string(),
+            ..Default::default()
+        },
     };
-    gs.overall.name = "Overall".to_string();
 
     for proj in projects {
-        let mut ps = ProjectStats::default();
-        ps.name = proj.name.clone();
+        let mut ps = ProjectStats {
+            name: proj.name.clone(),
+            ..Default::default()
+        };
 
         for sess in &proj.sessions {
             for msg in &sess.messages {

@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::models::McpServer;
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
@@ -17,13 +17,13 @@ pub fn discover_mcp_servers() -> Result<Vec<McpServer>> {
         for (name, config) in mcp {
             let mut server = McpServer {
                 name: name.clone(),
-                url: config.get("httpUrl").and_then(|u| u.as_str()).map(|s| s.to_string()),
-                command: config.get("command").and_then(|u| u.as_str()).map(|s| s.to_string()),
+                url: config.get("httpUrl").and_then(|u| u.as_str()).map(std::string::ToString::to_string),
+                command: config.get("command").and_then(|u| u.as_str()).map(std::string::ToString::to_string),
                 args: vec![],
                 env: HashMap::new(),
             };
             if let Some(args) = config.get("args").and_then(|a| a.as_array()) {
-                server.args = args.iter().filter_map(|a| a.as_str().map(|s| s.to_string())).collect();
+                server.args = args.iter().filter_map(|a| a.as_str().map(std::string::ToString::to_string)).collect();
             }
             if let Some(env) = config.get("env").and_then(|e| e.as_object()) {
                 for (k, val) in env {

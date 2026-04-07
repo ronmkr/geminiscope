@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::models::Skill;
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
@@ -19,8 +19,8 @@ pub fn discover_skills() -> Result<Vec<Skill>> {
                 for p_entry in fs::read_dir(prompts_dir)? {
                     let p_entry = p_entry?;
                     let p_path = p_entry.path();
-                    if p_path.extension().map_or(false, |e| e == "toml") {
-                        if let Ok(content) = fs::read_to_string(&p_path) {
+                    if p_path.extension().is_some_and(|e| e == "toml")
+                        && let Ok(content) = fs::read_to_string(&p_path) {
                             // Basic parsing for description and prompt
                             let desc = content.lines()
                                 .find(|l| l.starts_with("description ="))
@@ -37,7 +37,6 @@ pub fn discover_skills() -> Result<Vec<Skill>> {
                                 content,
                             });
                         }
-                    }
                 }
             }
         }

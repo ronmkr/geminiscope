@@ -12,7 +12,7 @@ use ratatui::{
 pub fn render_security_banner(f: &mut Frame, app: &App, area: Rect) {
     if let Some(state) = &app.state {
         let critical_count = state.health.iter().filter(|h| h.severity == "Critical").count();
-        let text = format!(" 󰒐 CRITICAL SECURITY ALERT: {} issues detected in history. Check health view (6) immediately! ", critical_count);
+        let text = format!(" 󰒐 CRITICAL SECURITY ALERT: {critical_count} issues detected in history. Check health view (6) immediately! ");
         let p = Paragraph::new(Line::from(Span::styled(text, Style::default().bg(Color::Red).fg(Color::White).bold())));
         f.render_widget(p, area);
     }
@@ -48,7 +48,7 @@ pub fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     let mut spans = if app.is_editing_setting {
         vec![
             Span::styled(" 󰏫 EDIT MODE: Type value and press Enter to save, Esc to cancel ", Style::default().bg(Color::Yellow).fg(Color::Black).bold()),
-            Span::styled(format!("  {} > ", app.setting_path.last().unwrap_or(&"setting".to_string())), Style::default().bg(sidebar_bg).fg(Color::White)),
+            Span::styled(format!("  {} > ", app.setting_path.last().map_or("setting", |s| s.as_str())), Style::default().bg(sidebar_bg).fg(Color::White)),
             Span::styled(format!(" {} ", app.edit_input), Style::default().bg(sidebar_bg).fg(primary_color).bold()),
             Span::styled("█", Style::default().fg(primary_color).add_modifier(Modifier::SLOW_BLINK)),
         ]
@@ -73,7 +73,7 @@ pub fn render_footer(f: &mut Frame, app: &App, area: Rect) {
                 ProjectSort::Tokens => "Tokens",
                 ProjectSort::Name => "Name",
             };
-            spans.push(Span::styled(format!(" 󰒺 Sort: {} ", sort_label), Style::default().bg(secondary_color).fg(Color::Black).bold()));
+            spans.push(Span::styled(format!(" 󰒺 Sort: {sort_label} "), Style::default().bg(secondary_color).fg(Color::Black).bold()));
         }
     }
 
@@ -172,7 +172,8 @@ pub fn render_setting_edit_modal(f: &mut Frame, app: &App) {
     let theme = app.state.as_ref().map(|s| s.theme.clone()).unwrap_or_default();
     let primary_color = theme::get_color(&theme.primary);
 
-    let title = format!(" 󰏫 Edit Setting: {} ", app.setting_path.last().unwrap_or(&"setting".to_string()));
+    let setting_name = app.setting_path.last().map_or("setting", |s| s.as_str());
+    let title = format!(" 󰏫 Edit Setting: {setting_name} ");
     let block = Block::default()
         .title(Span::styled(title, Style::default().fg(primary_color).bold()))
         .borders(Borders::ALL)

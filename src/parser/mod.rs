@@ -7,7 +7,7 @@ pub mod project;
 pub mod config;
 pub mod security;
 
-use crate::models::*;
+use crate::models::{Session, State, TimelineEvent};
 use anyhow::{Result, Context};
 
 use std::path::{Path, PathBuf};
@@ -67,12 +67,11 @@ impl Parser {
         let settings = config::parse_settings().unwrap_or_default();
         let theme = config::parse_theme().unwrap_or_default();
 
-        let checker = HealthChecker::new();
         let now = chrono::Utc::now();
         let mut ses_count = 0;
 
         for proj in &projects {
-            checker.check_project_health(proj, &mut health);
+            HealthChecker::check_project_health(proj, &mut health);
 
             for sess in &proj.sessions {
                 all_sessions.push(sess.clone());
@@ -81,12 +80,12 @@ impl Parser {
                     project: proj.name.clone(),
                 });
 
-                checker.check_session_health(proj, sess, &mut health, now, &mut ses_count);
+                HealthChecker::check_session_health(proj, sess, &mut health, now, &mut ses_count);
             }
         }
 
         for skill in &skills {
-            checker.check_skill_health(skill, &mut health);
+            HealthChecker::check_skill_health(skill, &mut health);
         }
 
         timeline.sort_by(|a, b| b.session.last_updated.cmp(&a.session.last_updated));
@@ -104,7 +103,7 @@ impl Parser {
         })
     }
 
-    pub fn save_settings(&self, settings: &serde_json::Value) -> Result<()> {
+    pub fn save_settings(settings: &serde_json::Value) -> Result<()> {
         config::save_settings(settings)
     }
 }

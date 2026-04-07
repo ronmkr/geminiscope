@@ -1,11 +1,10 @@
 use ratatui::style::Color;
 
 pub fn get_color(color_str: &str) -> Color {
-    if color_str.starts_with('#') {
-        if let Ok(c) = hex_to_rgb(color_str) {
+    if color_str.starts_with('#')
+        && let Ok(c) = hex_to_rgb(color_str) {
             return Color::Rgb(c.0, c.1, c.2);
         }
-    }
     
     match color_str.to_lowercase().as_str() {
         "black" => Color::Black,

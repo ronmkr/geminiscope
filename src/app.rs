@@ -64,17 +64,16 @@ impl App {
         let parser_clone = parser_arc.clone();
 
         // Background worker for settings saving
-        let parser_save = parser_arc.clone();
         tokio::spawn(async move {
             while let Some(settings) = save_rx.recv().await {
-                let _ = parser_save.save_settings(&settings);
+                let _ = Parser::save_settings(&settings);
             }
         });
 
         // Watcher for live updates
         let refresh_tx_watcher = refresh_tx.clone();
-        let mut watcher = notify::recommended_watcher(move |res| {
-            if let Ok(_) = res {
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if res.is_ok() {
                 let _ = refresh_tx_watcher.try_send(());
             }
         })?;
@@ -95,11 +94,11 @@ impl App {
             if self.should_quit { break; }
 
             terminal.draw(|f| crate::ui::render(f, &mut self))
-                .map_err(|e| anyhow::anyhow!("Terminal error: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Terminal error: {e}"))?;
 
             tokio::select! {
                 _ = ticker.tick() => {
-                    if let Ok(_) = refresh_rx.try_recv() {
+                    if let Ok(()) = refresh_rx.try_recv() {
                         let tx = tx.clone();
                         let p = parser_clone.clone();
                         tokio::spawn(async move {
@@ -114,13 +113,11 @@ impl App {
                 Some(new_state) = rx.recv() => {
                     self.state = Some(new_state);
                     self.is_loading = false;
-                    if self.list_state.selected().is_none() {
-                        if let Some(s) = &self.state {
-                            if !s.all_sessions.is_empty() {
+                    if self.list_state.selected().is_none()
+                        && let Some(s) = &self.state
+                            && !s.all_sessions.is_empty() {
                                 self.list_state.select(Some(0));
                             }
-                        }
-                    }
                 }
                 res = tokio::task::spawn_blocking(|| event::poll(Duration::from_millis(10))) => {
                     if let Ok(Ok(true)) = res {
@@ -155,12 +152,11 @@ impl App {
             if y >= 1 {
                 let icon_idx = (y - 1) / 2;
                 let all_views = View::all();
-                if let Some(&new_view) = all_views.get(icon_idx as usize) {
-                    if self.view != new_view {
+                if let Some(&new_view) = all_views.get(icon_idx as usize)
+                    && self.view != new_view {
                         self.view = new_view;
                         self.reset_view();
                     }
-                }
             }
         }
     }
@@ -270,6 +266,7 @@ impl App {
         self.last_action_msg = Some((format!("󰒐 Secret Redaction: {status}"), std::time::Instant::now()));
     }
 
+
     fn cycle_sort(&mut self) {
         self.sort_mode = match self.sort_mode {
             ProjectSort::Date => ProjectSort::Cost,
@@ -324,30 +321,27 @@ impl App {
     }
 
     fn move_cursor(&mut self, delta: i32) {
-        if let Some(state) = &self.state {
-            let handler = crate::ui::handlers::get_handler(self.view);
-            let count = handler.count(state, &self.search_query);
-            
-            if count == 0 { return; }
-            let current = self.list_state.selected().unwrap_or(0);
-            let mut next = (current as i32 + delta).rem_euclid(count as i32) as usize;
-            
-            if self.view == View::Settings {
-                if crate::ui::infrastructure::get_setting_at_index(state, next).is_none() {
-                    next = (next as i32 + delta.signum()).rem_euclid(count as i32) as usize;
-                }
-            }
-
-            self.list_state.select(Some(next));
-            self.detail_scroll = 0;
+        let Some(state) = &self.state else { return };
+        let handler = crate::ui::handlers::get_handler(self.view);
+        let count = handler.count(state, &self.search_query);
+        
+        if count == 0 { return; }
+        let current = self.list_state.selected().unwrap_or(0);
+        let mut next = (current as i32 + delta).rem_euclid(count as i32) as usize;
+        
+        if self.view == View::Settings && crate::ui::infrastructure::get_setting_at_index(state, next).is_none() {
+            next = (next as i32 + delta.signum()).rem_euclid(count as i32) as usize;
         }
+
+        self.list_state.select(Some(next));
+        self.detail_scroll = 0;
     }
 
     fn start_setting_edit(&mut self, save_tx: &mpsc::Sender<serde_json::Value>) {
         if let Some(state) = &self.state {
             let selected = self.list_state.selected().unwrap_or(0);
             if let Some((path, val, _)) = crate::ui::infrastructure::get_setting_at_index(state, selected) {
-                self.setting_path = path.split('.').map(|s| s.to_string()).collect();
+                self.setting_path = path.split('.').map(std::string::ToString::to_string).collect();
                 match val {
                     serde_json::Value::Bool(b) => {
                         let mut new_settings = state.settings.clone();
@@ -380,7 +374,7 @@ impl App {
                 curr[key.clone()] = val;
                 return;
             }
-            if !curr.get(key).map_or(false, |v| v.is_object()) {
+            if !curr.get(key).is_some_and(serde_json::Value::is_object) {
                 curr[key.clone()] = serde_json::json!({});
             }
             if let Some(next) = curr.get_mut(key) {
@@ -513,8 +507,8 @@ impl App {
             match self.view {
                 View::Chats | View::Tools | View::Timeline => {
                     let filtered = state.filtered_sessions(&self.search_query);
-                    if let Some(sess) = filtered.get(selected) {
-                        if let Ok(json) = serde_json::to_string_pretty(sess) {
+                    if let Some(sess) = filtered.get(selected)
+                        && let Ok(json) = serde_json::to_string_pretty(sess) {
                             let filename = format!("geminiscope_session_{}.json", &sess.session_id[..8]);
                             #[cfg(unix)]
                             {
@@ -522,11 +516,10 @@ impl App {
                                 use std::io::Write;
                                 let mut options = std::fs::OpenOptions::new();
                                 options.write(true).create(true).truncate(true).mode(0o600);
-                                if let Ok(mut file) = options.open(&filename) {
-                                    if file.write_all(json.as_bytes()).is_ok() {
+                                if let Ok(mut file) = options.open(&filename)
+                                    && file.write_all(json.as_bytes()).is_ok() {
                                         self.last_action_msg = Some((format!("󰄬 Exported (Private) to {filename}"), std::time::Instant::now()));
                                     }
-                                }
                             }
                             #[cfg(not(unix))]
                             {
@@ -535,7 +528,6 @@ impl App {
                                 }
                             }
                         }
-                    }
                 },
                 _ => {}
             }

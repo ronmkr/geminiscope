@@ -31,7 +31,7 @@ pub fn get_known_settings() -> Vec<SettingSchema> {
     ]
 }
 
-pub fn get_infra_list_items<'a>(state: &'a State, view: View) -> Vec<ListItem<'a>> {
+pub fn get_infra_list_items(state: &State, view: View) -> Vec<ListItem<'_>> {
     match view {
         View::Settings => {
             let mut last_section = String::new();
@@ -40,7 +40,7 @@ pub fn get_infra_list_items<'a>(state: &'a State, view: View) -> Vec<ListItem<'a
             for (path, val, is_default) in get_all_settings(state) {
                 let section = path.split('.').next().unwrap_or("").to_uppercase();
                 if section != last_section {
-                    items.push(ListItem::new(Line::from(format!("─── {} ───", section)).cyan().bold()));
+                    items.push(ListItem::new(Line::from(format!("─── {section} ───")).cyan().bold()));
                     last_section = section;
                 }
 
@@ -109,7 +109,8 @@ pub fn get_infra_list_items<'a>(state: &'a State, view: View) -> Vec<ListItem<'a
             }
             items
         },
-        View::MCP => {
+        View::Mcp
+ => {
             let mut items = Vec::new();
             let mut seen_mcps = std::collections::HashSet::new();
             for s in &state.mcp_servers {
@@ -155,7 +156,7 @@ pub fn flatten_settings_helper(v: &serde_json::Value, prefix: &str) -> Vec<(Stri
         let mut keys: Vec<_> = obj.keys().collect();
         keys.sort();
         for k in keys {
-            let new_prefix = if prefix.is_empty() { k.clone() } else { format!("{}.{}", prefix, k) };
+            let new_prefix = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
             let val = &obj[k];
             if val.is_object() && k != "mcpServers" {
                 items.extend(flatten_settings_helper(val, &new_prefix));
@@ -196,22 +197,22 @@ pub fn render_infra_detail(f: &mut Frame, app: &App, area: Rect) {
     let mut title = " Detail ".to_string();
 
     match app.view {
-        View::Memory | View::Plans | View::Health | View::Skills | View::MCP => {
+        View::Memory | View::Plans | View::Health | View::Skills | View::Mcp => {
              render_original_infra_detail(f, app, area, state, selected);
              return;
         },
         View::Settings => {
             if let Some((path, val, is_default)) = get_setting_at_index(state, selected) {
-                title = format!(" Setting: {} ", path);
+                title = format!(" Setting: {path} ");
                 markdown = String::new(); // Removed duplicate # Setting header
                 
                 if is_default {
-                    markdown.push_str(&format!("**Status**: [NOT SET - Showing Default]\n\n"));
+                    markdown.push_str("**Status**: [NOT SET - Showing Default]\n\n");
                 } else {
                     markdown.push_str("**Status**: [CONFIGURED]\n\n");
                 }
                 
-                markdown.push_str(&format!("### Current Value\n`{}`\n\n", val));
+                markdown.push_str(&format!("### Current Value\n`{val}`\n\n"));
                 markdown.push_str("---\n\n### Description\n");
                 markdown.push_str(&get_setting_description(&path));
                 markdown.push_str("\n\n*Press Enter to edit/set this value*");
@@ -278,10 +279,10 @@ fn render_original_infra_detail(f: &mut Frame, app: &App, area: Rect, state: &St
             let critical = state.health.iter().filter(|i| i.severity == "Critical").count();
             let warnings = state.health.iter().filter(|i| i.severity == "Warning").count();
             let score = if critical > 0 { "POOR" } else if warnings > 5 { "FAIR" } else if warnings > 0 { "GOOD" } else { "EXCELLENT" };
-            markdown = format!("# Health Score: {}\n**Critical**: {} • **Warnings**: {}\n---\n", score, critical, warnings);
+            markdown = format!("# Health Score: {score}\n**Critical**: {critical} • **Warnings**: {warnings}\n---\n");
             if let Some(rule) = sorted_rules.get(selected) {
-                title = format!(" {} ", rule);
-                markdown.push_str(&format!("## Rule: {}\n", rule));
+                title = format!(" {rule} ");
+                markdown.push_str(&format!("## Rule: {rule}\n"));
                 for issue in &groups[*rule] {
                     markdown.push_str(&format!("### {}\n**Project**: {} • **File**: {} • **Severity**: {}\n", 
                         issue.message, issue.project, issue.file.as_deref().unwrap_or("N/A"), issue.severity));
@@ -303,7 +304,8 @@ fn render_original_infra_detail(f: &mut Frame, app: &App, area: Rect, state: &St
                     s.name, s.extension, s.description, s.content);
             }
         },
-        View::MCP => {
+        View::Mcp
+ => {
             let mut all_mcps = Vec::new();
             let mut seen = std::collections::HashSet::new();
             for s in &state.mcp_servers {
@@ -315,12 +317,12 @@ fn render_original_infra_detail(f: &mut Frame, app: &App, area: Rect, state: &St
             if let Some(s) = all_mcps.get(selected) {
                 title = format!(" MCP: {} ", s.name);
                 markdown = format!("# MCP Server: {}\n", s.name);
-                if let Some(url) = &s.url { markdown.push_str(&format!("- **Remote URL**: {}\n", url)); }
-                if let Some(cmd) = &s.command { markdown.push_str(&format!("- **Local Command**: `{}`\n", cmd)); }
+                if let Some(url) = &s.url { markdown.push_str(&format!("- **Remote URL**: {url}\n")); }
+                if let Some(cmd) = &s.command { markdown.push_str(&format!("- **Local Command**: `{cmd}`\n")); }
                 if !s.args.is_empty() { markdown.push_str(&format!("- **Arguments**: `{}`\n", s.args.join(" "))); }
                 if !s.env.is_empty() {
                     markdown.push_str("\n### Environment\n");
-                    for (k, v) in &s.env { markdown.push_str(&format!("- **{}**: `{}`\n", k, v)); }
+                    for (k, v) in &s.env { markdown.push_str(&format!("- **{k}**: `{v}`\n")); }
                 }
             }
         },

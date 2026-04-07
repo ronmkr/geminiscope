@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::models::Session;
 use anyhow::{Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,17 +22,16 @@ pub fn list_sessions(
     for entry in fs::read_dir(chats_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "json") {
+        if path.extension().is_some_and(|ext| ext == "json") {
             let metadata = fs::metadata(&path)?;
             let mtime = metadata.modified()?;
 
             // Check cache
-            if let Some((cached_mtime, session)) = cache_lock.get(&path) {
-                if *cached_mtime == mtime {
+            if let Some((cached_mtime, session)) = cache_lock.get(&path)
+                && *cached_mtime == mtime {
                     sessions.push(session.clone());
                     continue;
                 }
-            }
 
             // Parse and update cache
             if let Ok(session) = parse_session(&path) {

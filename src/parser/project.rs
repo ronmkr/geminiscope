@@ -29,8 +29,8 @@ pub fn discover_projects(
                 };
 
                 let chats_dir = canon_path.join("chats");
-                if chats_dir.exists() {
-                    if let Ok(sessions) = session::list_sessions(&canon_path, session_cache) {
+                if chats_dir.exists()
+                    && let Ok(sessions) = session::list_sessions(&canon_path, session_cache) {
                         if sessions.is_empty() { continue; }
                         
                         let (memory_files, plan_files) = discover_files(&canon_path);
@@ -43,17 +43,16 @@ pub fn discover_projects(
                             plan_files,
                         });
                     }
-                }
             }
         }
     }
 
     // 2. Fallback: Check if current dir is a project
-    if let Ok(curr_dir) = std::env::current_dir() {
-        if let Ok(canon_curr) = curr_dir.canonicalize() {
-            if canon_curr.starts_with(home_path) && canon_curr.join("chats").exists() {
-                 if let Ok(sessions) = session::list_sessions(&canon_curr, session_cache) {
-                    if !sessions.is_empty() && !projects.iter().any(|p| p.path == canon_curr.to_string_lossy().to_string()) {
+    if let Ok(curr_dir) = std::env::current_dir()
+        && let Ok(canon_curr) = curr_dir.canonicalize()
+            && canon_curr.starts_with(home_path) && canon_curr.join("chats").exists()
+                 && let Ok(sessions) = session::list_sessions(&canon_curr, session_cache)
+                    && !sessions.is_empty() && !projects.iter().any(|p| p.path == canon_curr.to_string_lossy()) {
                         let (memory_files, plan_files) = discover_files(&canon_curr);
                         projects.push(Project {
                             name: "Current Project".to_string(),
@@ -63,10 +62,6 @@ pub fn discover_projects(
                             plan_files,
                         });
                     }
-                 }
-            }
-        }
-    }
     
     projects.sort_by(|a, b| {
         let a_last = a.sessions.first().map(|s| s.last_updated);
@@ -114,10 +109,10 @@ pub fn discover_files(project_tmp_path: &Path) -> (Vec<ProjectFile>, Vec<Project
 
     // 3. Plans in tmp dir
     let plans_dir = project_tmp_path.join("plans");
-    if plans_dir.exists() {
-        if let Ok(entries) = fs::read_dir(plans_dir) {
+    if plans_dir.exists()
+        && let Ok(entries) = fs::read_dir(plans_dir) {
             for entry in entries.flatten() {
-                if entry.path().extension().map_or(false, |e| e == "md") {
+                if entry.path().extension().is_some_and(|e| e == "md") {
                     plans.push(ProjectFile {
                         name: entry.file_name().to_string_lossy().to_string(),
                         path: entry.path().to_string_lossy().to_string(),
@@ -126,7 +121,6 @@ pub fn discover_files(project_tmp_path: &Path) -> (Vec<ProjectFile>, Vec<Project
                 }
             }
         }
-    }
 
     (memories, plans)
 }

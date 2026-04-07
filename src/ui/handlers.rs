@@ -61,7 +61,7 @@ impl ViewHandler for InfraHandler {
             View::Plans => state.projects.iter().map(|p| p.plan_files.len()).sum(),
             View::Health => state.health.len(),
             View::Skills => state.skills.len(),
-            View::MCP => state.mcp_servers.len(),
+            View::Mcp => state.mcp_servers.len(),
             View::Settings => {
                 let mut count = 0;
                 let mut last_section = String::new();

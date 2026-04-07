@@ -8,11 +8,7 @@ use crate::parser::security;
 pub struct HealthChecker {}
 
 impl HealthChecker {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn check_project_health(&self, proj: &Project, health: &mut Vec<HealthIssue>) {
+    pub fn check_project_health(proj: &Project, health: &mut Vec<HealthIssue>) {
         if proj.memory_files.is_empty() {
             health.push(HealthIssue {
                 id: "CFG001".to_string(),
@@ -25,8 +21,8 @@ impl HealthChecker {
             });
         } else {
             for f in &proj.memory_files {
-                if let Ok(content) = fs::read_to_string(&f.path) {
-                    if content.len() < 100 {
+                if let Ok(content) = fs::read_to_string(&f.path)
+                    && content.len() < 100 {
                         health.push(HealthIssue {
                             id: "CFG002".to_string(),
                             severity: "Info".to_string(),
@@ -37,12 +33,11 @@ impl HealthChecker {
                             rule: "Context Depth".to_string(),
                         });
                     }
-                }
             }
         }
     }
 
-    pub fn check_session_health(&self, proj: &Project, sess: &Session, health: &mut Vec<HealthIssue>, now: chrono::DateTime<chrono::Utc>, ses_count: &mut usize) {
+    pub fn check_session_health(proj: &Project, sess: &Session, health: &mut Vec<HealthIssue>, now: chrono::DateTime<chrono::Utc>, ses_count: &mut usize) {
         let mut session_cost = 0.0;
         let mut session_tokens = 0;
         let msg_count = sess.messages.len();
@@ -77,22 +72,22 @@ impl HealthChecker {
             let idle_days = (now - sess.last_updated).num_days();
             
             if session_cost > 25.0 {
-                health.push(HealthIssue { id: "SES001".to_string(), severity: "Warning".to_string(), message: format!("Session cost exceeded $25 (${:.2})", session_cost), category: "Performance".to_string(), project: proj.name.clone(), file: Some(sess.session_id.clone()), rule: "Cost Limit".to_string() });
+                health.push(HealthIssue { id: "SES001".to_string(), severity: "Warning".to_string(), message: format!("Session cost exceeded $25 (${session_cost:.2})"), category: "Performance".to_string(), project: proj.name.clone(), file: Some(sess.session_id.clone()), rule: "Cost Limit".to_string() });
                 *ses_count += 1;
             } else if msg_count > 200 {
-                health.push(HealthIssue { id: "SES002".to_string(), severity: "Warning".to_string(), message: format!("Conversation exceeded 200 messages ({})", msg_count), category: "Performance".to_string(), project: proj.name.clone(), file: Some(sess.session_id.clone()), rule: "Message Limit".to_string() });
+                health.push(HealthIssue { id: "SES002".to_string(), severity: "Warning".to_string(), message: format!("Conversation exceeded 200 messages ({msg_count})"), category: "Performance".to_string(), project: proj.name.clone(), file: Some(sess.session_id.clone()), rule: "Message Limit".to_string() });
                 *ses_count += 1;
             } else if session_tokens > 5_000_000 {
-                health.push(HealthIssue { id: "SES003".to_string(), severity: "Warning".to_string(), message: format!("Token consumption exceeded 5M ({})", session_tokens), category: "Performance".to_string(), project: proj.name.clone(), file: Some(sess.session_id.clone()), rule: "Token Limit".to_string() });
+                health.push(HealthIssue { id: "SES003".to_string(), severity: "Warning".to_string(), message: format!("Token consumption exceeded 5M ({session_tokens})"), category: "Performance".to_string(), project: proj.name.clone(), file: Some(sess.session_id.clone()), rule: "Token Limit".to_string() });
                 *ses_count += 1;
             } else if idle_days > 7 && msg_count > 50 {
-                health.push(HealthIssue { id: "SES004".to_string(), severity: "Info".to_string(), message: format!("Session idle for {} days with {} msgs", idle_days, msg_count), category: "Performance".to_string(), project: proj.name.clone(), file: Some(sess.session_id.clone()), rule: "Stale Session".to_string() });
+                health.push(HealthIssue { id: "SES004".to_string(), severity: "Info".to_string(), message: format!("Session idle for {idle_days} days with {msg_count} msgs"), category: "Performance".to_string(), project: proj.name.clone(), file: Some(sess.session_id.clone()), rule: "Stale Session".to_string() });
                 *ses_count += 1;
             }
         }
     }
 
-    pub fn check_skill_health(&self, skill: &Skill, health: &mut Vec<HealthIssue>) {
+    pub fn check_skill_health(skill: &Skill, health: &mut Vec<HealthIssue>) {
         if skill.description.len() < 10 {
             health.push(HealthIssue {
                 id: "SKL001".to_string(),

@@ -12,7 +12,7 @@ pub enum View {
     Health,
     Timeline,
     Skills,
-    MCP,
+    Mcp,
     Settings,
     Diff,
 }
@@ -28,7 +28,8 @@ impl View {
             Self::Health => " HEALTH ",
             Self::Timeline => " TIMELINE ",
             Self::Skills => " SKILLS ",
-            Self::MCP => " MCPS ",
+            Self::Mcp =>
+ " MCPS ",
             Self::Settings => " SETTINGS ",
             Self::Diff => " DIFF ",
         }
@@ -44,7 +45,8 @@ impl View {
             Self::Health => "󰓚",
             Self::Timeline => "󰃭",
             Self::Skills => "󰛨",
-            Self::MCP => "󰒄",
+            Self::Mcp =>
+ "󰒄",
             Self::Settings => "󰒓",
             Self::Diff => "󰒺",
         }
@@ -53,7 +55,7 @@ impl View {
     pub fn all() -> Vec<Self> {
         vec![
             Self::Chats, Self::Stats, Self::Tools, Self::Memory, Self::Plans,
-            Self::Health, Self::Timeline, Self::Skills, Self::MCP, Self::Settings, Self::Diff
+            Self::Health, Self::Timeline, Self::Skills, Self::Mcp, Self::Settings, Self::Diff
         ]
     }
 }
@@ -164,14 +166,15 @@ pub struct Session {
 
 impl Session {
     pub fn search_text(&self) -> String {
-        self.messages.iter().map(|m| m.search_text()).collect::<Vec<_>>().join(" ")
+        self.messages.iter().map(Message::search_text).collect::<Vec<_>>().join(" ")
     }
 
     pub fn full_text(&self) -> String {
+        use std::fmt::Write;
         let mut text = String::new();
         for msg in &self.messages {
             let header = if msg.msg_type == "user" { "USER" } else { "GEMINI" };
-            text.push_str(&format!("### {}\n", header));
+            let _ = writeln!(text, "### {header}");
             text.push_str(&msg.raw_content());
             text.push_str("\n\n");
         }
@@ -208,7 +211,7 @@ pub fn format_value(content: &serde_json::Value) -> String {
     if let Some(arr) = content.as_array() {
         return arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("");
     }
-    format!("{}", content)
+    format!("{content}")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

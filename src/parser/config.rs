@@ -13,11 +13,10 @@ pub fn parse_theme() -> Result<Theme> {
     if theme_file.exists() {
         let data = fs::read_to_string(&theme_file)?;
         let themes: serde_json::Value = serde_json::from_str(&data)?;
-        if let Some(t_val) = themes.get(theme_name) {
-            if let Ok(theme) = serde_json::from_value(t_val.clone()) {
+        if let Some(t_val) = themes.get(theme_name)
+            && let Ok(theme) = serde_json::from_value(t_val.clone()) {
                 return Ok(theme);
             }
-        }
     }
 
     // Fallback to old path if themes.json doesn't exist or doesn't have the theme

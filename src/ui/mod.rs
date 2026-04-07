@@ -22,7 +22,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
     };
 
 
-    let has_notif = app.last_action_msg.as_ref().map(|(_, t)| t.elapsed().as_secs() < 3).unwrap_or(false);
+    let has_notif = app.last_action_msg.as_ref().is_some_and(|(_, t)| t.elapsed().as_secs() < 3);
 
     let mut constraints = vec![Constraint::Min(0), Constraint::Length(1)];
     if has_critical { constraints.insert(0, Constraint::Length(1)); }
@@ -34,13 +34,12 @@ pub fn render(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     let mut current_idx = 0;
-    if has_notif {
-        if let Some((msg, _)) = &app.last_action_msg {
-            let p = Paragraph::new(Line::from(Span::styled(format!(" {} ", msg), Style::default().bg(Color::Green).fg(Color::Black).bold())));
+    if has_notif
+        && let Some((msg, _)) = &app.last_action_msg {
+            let p = Paragraph::new(Line::from(Span::styled(format!(" {msg} "), Style::default().bg(Color::Green).fg(Color::Black).bold())));
             f.render_widget(p, chunks[current_idx]);
             current_idx += 1;
         }
-    }
 
     if has_critical {
         components::render_security_banner(f, app, chunks[current_idx]);
@@ -85,10 +84,7 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
     
     let view = app.view;
     let search_query = &app.search_query;
-    let state = match &app.state {
-        Some(s) => s,
-        None => return,
-    };
+    let Some(state) = &app.state else { return };
     let sort_mode = app.sort_mode;
 
     let title = view.title();
@@ -103,10 +99,10 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
     let items = handler.list_items(state, search_query, sort_mode);
 
     if items.is_empty() {
-        let msg = if !app.search_query.is_empty() {
-            format!("\n\n  󰍉 No results for\n  '{}'", app.search_query)
-        } else {
+        let msg = if app.search_query.is_empty() {
             "\n\n  󰩈 No items found".to_string()
+        } else {
+            format!("\n\n  󰍉 No results for\n  '{search_query}'")
         };
         f.render_widget(Paragraph::new(msg).dark_gray(), area);
     } else {
@@ -164,7 +160,7 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
             .alignment(ratatui::layout::Alignment::Center)
             .dark_gray()
             .block(Block::default()
-                .title(Span::styled(format!(" {} ", title), Style::default().fg(primary_color).bold()))
+                .title(Span::styled(format!(" {title} "), Style::default().fg(primary_color).bold()))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(sidebar_bg)));
         f.render_widget(p, area);
@@ -174,7 +170,7 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
     // Increased limit to 500KB but optimized line loop
     if markdown.len() > 500_000 {
         let p = Paragraph::new(format!("[Content too large for TUI rendering: {} bytes. Press 'e' to export full session.]", markdown.len()))
-            .block(Block::default().title(format!(" {} ", title)).borders(Borders::ALL));
+            .block(Block::default().title(format!(" {title} ")).borders(Borders::ALL));
         f.render_widget(p, area);
         return;
     }
@@ -192,7 +188,7 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
         let trimmed = line.trim();
         if trimmed.is_empty() { 
             // Avoid multiple empty lines
-            if lines.last().map(|l: &Line| l.spans.is_empty()).unwrap_or(true) {
+            if lines.last().is_none_or(|l: &Line| l.spans.is_empty()) {
                 continue;
             }
             lines.push(Line::from(""));
@@ -205,12 +201,12 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
             continue;
         }
 
-        if trimmed.starts_with("# ") {
-            lines.push(Line::from(Span::styled(trimmed[2..].to_string(), Style::default().fg(primary_color).bold())));
-        } else if trimmed.starts_with("## ") {
-            lines.push(Line::from(Span::styled(trimmed[3..].to_string(), Style::default().fg(primary_color).bold())));
-        } else if trimmed.starts_with("### ") {
-            lines.push(Line::from(Span::styled(trimmed[4..].to_string(), Style::default().fg(secondary_color).bold())));
+        if let Some(stripped) = trimmed.strip_prefix("# ") {
+            lines.push(Line::from(Span::styled(stripped.to_string(), Style::default().fg(primary_color).bold())));
+        } else if let Some(stripped) = trimmed.strip_prefix("## ") {
+            lines.push(Line::from(Span::styled(stripped.to_string(), Style::default().fg(primary_color).bold())));
+        } else if let Some(stripped) = trimmed.strip_prefix("### ") {
+            lines.push(Line::from(Span::styled(stripped.to_string(), Style::default().fg(secondary_color).bold())));
         } else if trimmed == "---" {
             lines.push(Line::from("────────────────────────────────────────────────────────────────").dark_gray());
         } else if in_code_block || (trimmed.starts_with('{') || trimmed.starts_with('"') || trimmed.starts_with('}')) {
@@ -251,7 +247,7 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
         .wrap(ratatui::widgets::Wrap { trim: false })
         .scroll((app.detail_scroll, 0))
         .block(Block::default()
-            .title(Span::styled(format!(" {} ", title), Style::default().fg(primary_color).bold()))
+            .title(Span::styled(format!(" {title} "), Style::default().fg(primary_color).bold()))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(sidebar_bg))
             .padding(Padding::uniform(1)));

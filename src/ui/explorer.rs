@@ -15,9 +15,7 @@ pub fn get_explorer_list_items<'a>(state: &'a State, view: View, search_query: &
             let filtered = state.filtered_sessions(search_query);
 
             filtered.into_iter().map(|s| {
-                let first_msg = s.messages.iter().find(|m| m.msg_type == "user")
-                    .map(|m| m.raw_content())
-                    .unwrap_or_else(|| "Empty Session".to_string());
+                let first_msg = s.messages.iter().find(|m| m.msg_type == "user").map_or_else(|| "Empty Session".to_string(), super::super::models::Message::raw_content);
                 let title = if first_msg.len() > 25 { format!("{}...", &first_msg[..25]) } else { first_msg };
                 ListItem::new(vec![
                     Line::from(title).bold(),
@@ -26,9 +24,7 @@ pub fn get_explorer_list_items<'a>(state: &'a State, view: View, search_query: &
             }).collect()
         },
         View::Timeline => state.timeline.iter().map(|e| {
-            let preview = e.session.messages.iter().find(|m| m.msg_type == "user")
-                .map(|m| m.raw_content())
-                .unwrap_or_else(|| "Empty".to_string());
+            let preview = e.session.messages.iter().find(|m| m.msg_type == "user").map_or_else(|| "Empty".to_string(), super::super::models::Message::raw_content);
             let title = if preview.len() > 20 { format!("{}...", &preview[..20]) } else { preview };
             ListItem::new(vec![
                 Line::from(title).bold(),
@@ -56,7 +52,7 @@ pub fn render_explorer_detail(f: &mut Frame, app: &App, area: Rect) {
                 title = format!(" Chat: {} ", &sess.session_id[..8]);
                 for msg in &sess.messages {
                     let header = if msg.msg_type == "user" { "### 󰭻 USER" } else { "### 󰄦 GEMINI" };
-                    markdown.push_str(&format!("{}\n", header));
+                    markdown.push_str(&format!("{header}\n"));
                     if let (Some(model), Some(tokens)) = (&msg.model, &msg.tokens) {
                         let pricing = if model.contains("flash") { (0.075, 0.30) } else { (3.50, 10.50) };
                         let cost = (tokens.input as f64 / 1_000_000.0 * pricing.0) + (tokens.output as f64 / 1_000_000.0 * pricing.1);
