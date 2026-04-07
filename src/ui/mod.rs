@@ -100,6 +100,7 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
         View::Skills => " SKILLS ",
         View::MCP => " MCPS ",
         View::Settings => " SETTINGS ",
+        View::Diff => " DIFF ",
     };
 
     let block = Block::default()
@@ -162,6 +163,11 @@ fn render_content(f: &mut Frame, app: &App, area: Rect) {
     match app.view {
         View::Chats | View::Tools | View::Timeline => explorer::render_explorer_detail(f, app, area),
         View::Stats => stats::render_stats_detail(f, app, area),
+        View::Diff => {
+            if let Some((_, _, diff_text)) = &app.diff_results {
+                render_markdown(f, app, area, "Session Comparison", diff_text);
+            }
+        }
         _ => infrastructure::render_infra_detail(f, app, area),
     }
 }
@@ -197,6 +203,12 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
 
     let mut lines = Vec::new();
     let mut in_code_block = false;
+
+    let markdown = if app.is_redacting {
+        crate::parser::security::redact_text(markdown)
+    } else {
+        markdown.to_string()
+    };
 
     for line in markdown.lines() {
         let trimmed = line.trim();

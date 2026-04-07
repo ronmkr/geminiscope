@@ -2,6 +2,7 @@
 name = "geminiscope"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.102"
@@ -12,6 +13,7 @@ fuzzy-matcher = "0.3.7"
 notify = "8.2.0"
 ratatui = "0.30.0"
 regex = "1.12.3"
+similar = { version = "2.7.0", features = ["inline"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 tokio = { version = "1.51.0", features = ["full"] }

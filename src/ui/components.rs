@@ -125,7 +125,10 @@ pub fn render_help_modal(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(vec![Span::styled(" Actions ", Style::default().fg(primary_color).bold())]),
         Line::from(vec![Span::styled("  /       ", Style::default().fg(Color::Yellow)), Span::raw("  Search/Filter current view")]),
+        Line::from(vec![Span::styled("  o       ", Style::default().fg(Color::Yellow)), Span::raw("  Open selected file in editor")]),
+        Line::from(vec![Span::styled("  d       ", Style::default().fg(Color::Yellow)), Span::raw("  Diff: Press on 1st then 2nd session")]),
         Line::from(vec![Span::styled("  s       ", Style::default().fg(Color::Yellow)), Span::raw("  Toggle sort (Stats view)")]),
+        Line::from(vec![Span::styled("  Ctrl+r  ", Style::default().fg(Color::Yellow)), Span::raw("  Toggle Secret Redaction")]),
         Line::from(vec![Span::styled("  e       ", Style::default().fg(Color::Yellow)), Span::raw("  Export view to JSON file")]),
         Line::from(vec![Span::styled("  Enter   ", Style::default().fg(Color::Yellow)), Span::raw("  Edit selected setting")]),
         Line::from(vec![Span::styled("  q / Esc ", Style::default().fg(Color::Yellow)), Span::raw("  Close Help / Quit App")]),
@@ -183,6 +186,17 @@ pub fn render_setting_edit_modal(f: &mut Frame, app: &App) {
 
     f.render_widget(ratatui::widgets::Clear, input_area);
     f.render_widget(p, input_area);
+}
+
+pub fn format_session_full_text(sess: &crate::models::Session) -> String {
+    let mut text = String::new();
+    for msg in &sess.messages {
+        let header = if msg.msg_type == "user" { "USER" } else { "GEMINI" };
+        text.push_str(&format!("### {}\n", header));
+        text.push_str(&format_raw_content(&msg.content));
+        text.push_str("\n\n");
+    }
+    text
 }
 
 pub fn format_raw_content(content: &serde_json::Value) -> String {

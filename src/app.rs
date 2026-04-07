@@ -19,6 +19,7 @@ pub enum View {
     Skills,
     MCP,
     Settings,
+    Diff,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -46,6 +47,11 @@ pub struct App {
     pub edit_input: String,
     pub setting_path: Vec<String>,
     pub is_showing_help: bool,
+    pub is_redacting: bool,
+
+    // Diff State
+    pub diff_target: Option<String>, // session_id
+    pub diff_results: Option<(String, String, String)>, // (id1, id2, diff_text)
 }
 
 impl App {
@@ -65,6 +71,9 @@ impl App {
             edit_input: String::new(),
             setting_path: Vec::new(),
             is_showing_help: false,
+            is_redacting: true,
+            diff_target: None,
+            diff_results: None,
         }
     }
 
@@ -219,9 +228,22 @@ impl App {
                 if !self.search_query.is_empty() {
                     self.search_query.clear();
                     self.list_state.select(Some(0));
+                } else if self.diff_target.is_some() {
+                    self.diff_target = None;
+                    self.last_action_msg = Some(("󰄬 Diff selection cleared".to_string(), std::time::Instant::now()));
+                } else if self.view == View::Diff {
+                    self.view = View::Chats;
+                    self.reset_view();
                 }
             }
             KeyCode::Char('?') | KeyCode::Char('h') => self.is_showing_help = true,
+            KeyCode::Char('o') => self.handle_open_command(),
+            KeyCode::Char('d') => self.handle_diff_command(),
+            KeyCode::Char('r') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                self.is_redacting = !self.is_redacting;
+                let status = if self.is_redacting { "Enabled" } else { "Disabled" };
+                self.last_action_msg = Some((format!("󰒐 Secret Redaction: {}", status), std::time::Instant::now()));
+            }
             KeyCode::Char('e') => self.export_current_view(),
             KeyCode::Char('s') => {
                 self.sort_mode = match self.sort_mode {
@@ -311,6 +333,7 @@ impl App {
                     }
                     count
                 },
+                View::Diff => 1,
             };
             if count == 0 { return; }
             let current = self.list_state.selected().unwrap_or(0);
@@ -393,6 +416,117 @@ impl App {
             let _ = save_tx.try_send(settings);
             self.last_action_msg = Some((format!("󰄬 Updated {}", self.setting_path.last().unwrap_or(&"setting".to_string())), std::time::Instant::now()));
         }
+    }
+
+    fn handle_open_command(&mut self) {
+        if let Some(state) = &self.state {
+            let selected = self.list_state.selected().unwrap_or(0);
+            let path = match self.view {
+                View::Memory => {
+                    let mut all_files = Vec::new();
+                    for p in &state.projects { for f in &p.memory_files { all_files.push(&f.path); } }
+                    all_files.get(selected).cloned()
+                },
+                View::Plans => {
+                    let mut all_files = Vec::new();
+                    for p in &state.projects { for f in &p.plan_files { all_files.push(&f.path); } }
+                    all_files.get(selected).cloned()
+                },
+                _ => return,
+            };
+
+            if let Some(file_path) = path {
+                let editor = state.settings.get("general")
+                    .and_then(|g| g.get("preferredEditor"))
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("vim");
+                
+                // Suspend terminal
+                let _ = crossterm::terminal::disable_raw_mode();
+                let _ = crossterm::execute!(
+                    std::io::stdout(), 
+                    crossterm::terminal::LeaveAlternateScreen, 
+                    crossterm::event::DisableMouseCapture
+                );
+                
+                let res = crate::utils::open_in_editor(editor, file_path);
+
+                // Resume terminal
+                let _ = crossterm::terminal::enable_raw_mode();
+                let _ = crossterm::execute!(
+                    std::io::stdout(), 
+                    crossterm::terminal::EnterAlternateScreen, 
+                    crossterm::event::EnableMouseCapture
+                );
+
+                if let Err(err) = res {
+                    self.last_action_msg = Some((format!("⚠ Error opening editor: {}", err), std::time::Instant::now()));
+                }
+            }
+        }
+    }
+
+    fn handle_diff_command(&mut self) {
+        if let Some(state) = &self.state {
+            let selected = self.list_state.selected().unwrap_or(0);
+            let sessions: Vec<_> = match self.view {
+                View::Chats | View::Tools | View::Timeline => {
+                    if self.search_query.is_empty() {
+                        state.all_sessions.iter().collect()
+                    } else {
+                        let query = self.search_query.to_lowercase();
+                        state.all_sessions.iter().filter(|s| {
+                            crate::ui::components::format_session_search(s).to_lowercase().contains(&query)
+                        }).collect()
+                    }
+                }
+                _ => return,
+            };
+
+            if let Some(sess) = sessions.get(selected) {
+                let current_id = sess.session_id.clone();
+                
+                if let Some(target_id) = &self.diff_target {
+                    if target_id == &current_id {
+                        self.last_action_msg = Some(("⚠ Cannot diff a session with itself".to_string(), std::time::Instant::now()));
+                        return;
+                    }
+                    
+                    // Generate diff
+                    if let (Some(s1), Some(s2)) = (state.all_sessions.iter().find(|s| &s.session_id == target_id), Some(sess)) {
+                        self.diff_results = Some((target_id.clone(), current_id.clone(), self.generate_diff(s1, s2)));
+                        self.view = View::Diff;
+                        self.diff_target = None;
+                        self.last_action_msg = Some(("󰒺 Generated Diff".to_string(), std::time::Instant::now()));
+                    }
+                } else {
+                    self.diff_target = Some(current_id);
+                    self.last_action_msg = Some(("󰄬 Marked for comparison. Select another and press 'd'.".to_string(), std::time::Instant::now()));
+                }
+            }
+        }
+    }
+
+    fn generate_diff(&self, s1: &crate::models::Session, s2: &crate::models::Session) -> String {
+        use similar::{ChangeTag, TextDiff};
+        
+        let t1 = crate::ui::components::format_session_full_text(s1);
+        let t2 = crate::ui::components::format_session_full_text(s2);
+        
+        let diff = TextDiff::from_lines(&t1, &t2);
+        let mut result = String::new();
+        
+        result.push_str(&format!("# Diff: {} vs {}\n\n", &s1.session_id[..8], &s2.session_id[..8]));
+        
+        for change in diff.iter_all_changes() {
+            let sign = match change.tag() {
+                ChangeTag::Delete => "-",
+                ChangeTag::Insert => "+",
+                ChangeTag::Equal => " ",
+            };
+            result.push_str(&format!("{}{}", sign, change));
+        }
+        result
     }
 
     fn export_current_view(&mut self) {

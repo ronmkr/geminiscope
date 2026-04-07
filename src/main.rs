@@ -2,6 +2,7 @@ mod models;
 mod parser;
 mod app;
 mod ui;
+mod utils;
 
 use anyhow::Result;
 use app::App;

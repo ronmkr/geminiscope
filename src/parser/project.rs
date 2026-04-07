@@ -13,12 +13,24 @@ pub fn discover_projects(
 ) -> Result<Vec<Project>> {
     let mut projects = Vec::new();
     
+    let home = std::env::var("HOME").unwrap_or_default();
+    let home_path = Path::new(&home);
+
     // 1. Scan global tmp
     if base_dir.exists() {
         for entry in fs::read_dir(base_dir)? {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() {
+                // Canonicalize and ensure it's within HOME
+                if let Ok(canon_path) = path.canonicalize() {
+                    if !canon_path.starts_with(home_path) {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+
                 let chats_dir = path.join("chats");
                 if chats_dir.exists() {
                     if let Ok(sessions) = session::list_sessions(&path, session_cache) {
@@ -40,20 +52,23 @@ pub fn discover_projects(
     }
 
     // 2. Fallback: Check if current dir is a project
-    let curr_dir = std::env::current_dir()?;
-    if curr_dir.join("chats").exists() {
-         if let Ok(sessions) = session::list_sessions(&curr_dir, session_cache) {
-            if !sessions.is_empty() && !projects.iter().any(|p| p.path == curr_dir.to_string_lossy().to_string()) {
-                let (memory_files, plan_files) = discover_files(&curr_dir);
-                projects.push(Project {
-                    name: "Current Project".to_string(),
-                    path: curr_dir.to_string_lossy().to_string(),
-                    sessions,
-                    memory_files,
-                    plan_files,
-                });
+    if let Ok(curr_dir) = std::env::current_dir() {
+        if let Ok(canon_curr) = curr_dir.canonicalize() {
+            if canon_curr.starts_with(home_path) && canon_curr.join("chats").exists() {
+                 if let Ok(sessions) = session::list_sessions(&canon_curr, session_cache) {
+                    if !sessions.is_empty() && !projects.iter().any(|p| p.path == canon_curr.to_string_lossy().to_string()) {
+                        let (memory_files, plan_files) = discover_files(&canon_curr);
+                        projects.push(Project {
+                            name: "Current Project".to_string(),
+                            path: canon_curr.to_string_lossy().to_string(),
+                            sessions,
+                            memory_files,
+                            plan_files,
+                        });
+                    }
+                 }
             }
-         }
+        }
     }
     
     projects.sort_by(|a, b| {

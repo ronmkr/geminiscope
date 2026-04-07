@@ -5,6 +5,7 @@ pub mod skills;
 pub mod health;
 pub mod project;
 pub mod config;
+pub mod security;
 
 use crate::models::*;
 use anyhow::{Result, Context};

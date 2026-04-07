@@ -41,7 +41,7 @@ AI logs can grow to several megabytes. Geminiscope maintains performance through
 - [x] **Parser Decomposition**: Moved specialized handlers (MCP, Session, Tokens, Config, Project) into dedicated modules.
 
 ### 2. Advanced Features
-- [ ] **Session Diffing**: Compare two AI turns to see how prompts or parameters changed.
+- [x] **Session Diffing**: Compare two AI turns to see how prompts or parameters changed.
 - [ ] **Remote MCP Dashboard**: Live health monitoring of remote MCP servers.
 
 ### 3. Security & Hardening
@@ -50,6 +50,9 @@ AI logs can grow to several megabytes. Geminiscope maintains performance through
 - [x] **Path Sanitization**: Validate `.project_root` and discovery paths to prevent traversal.
 - [x] **Input Guardrails**: Add length limits to search and setting inputs to prevent memory DoS.
 - [x] **Panic Audit**: Replace remaining `.unwrap()` calls in UI/Parser with graceful error handling.
+- [x] **Command Safety**: Ensure `preferredEditor` is executed safely without shell injection.
+- [x] **Path Canonicalization**: Strictly validate all discovered paths using `canonicalize()`.
+- [x] **Secret Redaction**: Mask identified secrets in the UI detail view by default.
 
 ## 🛠️ Tech Stack Notes
 - **Language**: Rust

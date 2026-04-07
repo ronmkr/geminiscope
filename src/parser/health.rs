@@ -1,24 +1,15 @@
 use crate::models::*;
-use regex::Regex;
 use entropy::shannon_entropy;
 use crate::parser::stats::get_pricing;
 use std::fs;
 
-pub struct HealthChecker {
-    secret_regexes: Vec<(&'static str, Regex, usize)>,
-}
+use crate::parser::security;
+
+pub struct HealthChecker {}
 
 impl HealthChecker {
     pub fn new() -> Self {
-        let secret_regexes = vec![
-            ("Private Key", Regex::new(r"-----BEGIN [a-zA-Z\s]+ PRIVATE KEY-----").expect("Static Regex"), 0),
-            ("AWS Access Key", Regex::new(r"(?i)(AKIA[0-9A-Z]{16})").expect("Static Regex"), 1),
-            ("Auth Header", Regex::new(r"(?i)Authorization:\s*(?:Bearer|Basic)\s+([a-zA-Z0-9_=\-\.]{16,})").expect("Static Regex"), 1),
-            ("Platform Token", Regex::new(r"(ghp_|xox[bap]-|npm_|rk_live_|sk_live_|AIzaSy)[a-zA-Z0-9_\-]{20,}").expect("Static Regex"), 0),
-            ("API Key/Secret", Regex::new(r"(?i)(?:api_key|apikey|secret|token|password)[\s:=]+[\x22\x27]?([a-zA-Z0-9_\-\.]{16,})[\x22\x27]?").expect("Static Regex"), 1),
-            ("DB Connection", Regex::new(r"(?i)(?:postgres|mysql|redis|mongodb)://[a-zA-Z0-9_-]+:([a-zA-Z0-9_\-\.!@#$%^&*]+)@").expect("Static Regex"), 1),
-        ];
-        Self { secret_regexes }
+        Self {}
     }
 
     pub fn check_project_health(&self, proj: &Project, health: &mut Vec<HealthIssue>) {
@@ -64,14 +55,14 @@ impl HealthChecker {
             }
 
             let text = format_value(&msg.content);
-            for (name, re, capture_group) in &self.secret_regexes {
-                for cap in re.captures_iter(&text) {
-                    let match_str = cap.get(*capture_group).map_or("", |m| m.as_str());
-                    if shannon_entropy(match_str.as_bytes()) > 3.5 || *capture_group == 0 {
+            for pattern in security::get_secret_patterns() {
+                for cap in pattern.regex.captures_iter(&text) {
+                    let match_str = cap.get(pattern.capture_group).map_or("", |m| m.as_str());
+                    if shannon_entropy(match_str.as_bytes()) > 3.5 || pattern.capture_group == 0 {
                         health.push(HealthIssue {
                             id: "SEC001".to_string(),
                             severity: "Critical".to_string(),
-                            message: format!("Leaked {} detected in session history.", name),
+                            message: format!("Leaked {} detected in session history.", pattern.name),
                             category: "Security".to_string(),
                             project: proj.name.clone(),
                             file: Some(sess.session_id.clone()),

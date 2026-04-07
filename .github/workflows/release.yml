@@ -5,9 +5,12 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
-  release:
-    name: Build & Release
+  build:
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -25,6 +28,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -43,9 +47,34 @@ jobs:
             mv geminiscope ../../../${{ matrix.artifact_name }}
           fi
 
-      - name: Upload Artifacts
-        uses: softprops/action-gh-release@v1
+      - name: Upload temporary artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: ${{ matrix.artifact_name }}
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Display structure of downloaded artifacts
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/geminiscope-linux
+            artifacts/geminiscope-macos
+            artifacts/geminiscope.exe
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
