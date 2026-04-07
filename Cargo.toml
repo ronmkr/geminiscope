@@ -1,0 +1,19 @@
+[package]
+name = "geminiscope"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ansi-to-tui = "8.0.1"
+anyhow = "1.0.102"
+chrono = { version = "0.4.44", features = ["serde"] }
+crossterm = "0.29.0"
+entropy = "0.4.3"
+fuzzy-matcher = "0.3.7"
+notify = "8.2.0"
+ratatui = "0.30.0"
+regex = "1.12.3"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+termimad = "0.34.1"
+tokio = { version = "1.51.0", features = ["full"] }
