@@ -12,6 +12,32 @@ pub struct State {
     pub mcp_servers: Vec<McpServer>,
     pub skills: Vec<Skill>,
     pub settings: serde_json::Value,
+    pub theme: Theme,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Theme {
+    pub primary: String,
+    pub secondary: String,
+    pub accent: String,
+    pub sidebar_bg: String,
+    pub text: String,
+    pub json_key: String,
+    pub json_value: String,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            primary: "Magenta".to_string(),
+            secondary: "Cyan".to_string(),
+            accent: "Yellow".to_string(),
+            sidebar_bg: "#313244".to_string(),
+            text: "#CDD6F4".to_string(),
+            json_key: "Cyan".to_string(),
+            json_value: "Yellow".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

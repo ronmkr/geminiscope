@@ -2,7 +2,7 @@ pub mod components;
 pub mod explorer;
 pub mod stats;
 pub mod infrastructure;
-
+pub mod theme;
 use crate::app::{App, View};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -18,6 +18,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
     } else {
         false
     };
+
 
     let has_notif = app.last_action_msg.as_ref().map(|(_, t)| t.elapsed().as_secs() < 3).unwrap_or(false);
 
@@ -68,6 +69,10 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
     
+    let theme = app.state.as_ref().map(|s| s.theme.clone()).unwrap_or_default();
+    let primary_color = theme::get_color(&theme.primary);
+    let sidebar_bg = theme::get_color(&theme.sidebar_bg);
+    
     let view = app.view;
     let search_query = &app.search_query;
     let state = match &app.state {
@@ -90,9 +95,9 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let block = Block::default()
-        .title(Span::styled(title, Style::default().fg(Color::Magenta).bold()))
+        .title(Span::styled(title, Style::default().fg(primary_color).bold()))
         .borders(Borders::RIGHT)
-        .border_style(Style::default().fg(Color::Rgb(49, 50, 68)))
+        .border_style(Style::default().fg(sidebar_bg))
         .padding(Padding::horizontal(1));
 
     let items = match view {
@@ -103,7 +108,7 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().bg(Color::Rgb(49, 50, 68)).fg(Color::White))
+        .highlight_style(Style::default().bg(sidebar_bg).fg(Color::White))
         .highlight_symbol(" ");
 
     f.render_stateful_widget(list, area, &mut app.list_state);
@@ -121,6 +126,13 @@ fn render_content(f: &mut Frame, app: &App, area: Rect) {
 
 /// Shared utility to render high-density text content with basic syntax highlighting
 pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdown: &str) {
+    let theme = app.state.as_ref().map(|s| s.theme.clone()).unwrap_or_default();
+    let primary_color = theme::get_color(&theme.primary);
+    let secondary_color = theme::get_color(&theme.secondary);
+    let sidebar_bg = theme::get_color(&theme.sidebar_bg);
+    let json_key_color = theme::get_color(&theme.json_key);
+    let json_value_color = theme::get_color(&theme.json_value);
+
     // Increased limit to 500KB but optimized line loop
     if markdown.len() > 500_000 {
         let p = Paragraph::new(format!("[Content too large for TUI rendering: {} bytes. Press 'e' to export full session.]", markdown.len()))
@@ -150,11 +162,11 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
         }
 
         if trimmed.starts_with("# ") {
-            lines.push(Line::from(Span::styled(trimmed[2..].to_string(), Style::default().fg(Color::Magenta).bold())));
+            lines.push(Line::from(Span::styled(trimmed[2..].to_string(), Style::default().fg(primary_color).bold())));
         } else if trimmed.starts_with("## ") {
-            lines.push(Line::from(Span::styled(trimmed[3..].to_string(), Style::default().fg(Color::Magenta).bold())));
+            lines.push(Line::from(Span::styled(trimmed[3..].to_string(), Style::default().fg(primary_color).bold())));
         } else if trimmed.starts_with("### ") {
-            lines.push(Line::from(Span::styled(trimmed[4..].to_string(), Style::default().fg(Color::Cyan).bold())));
+            lines.push(Line::from(Span::styled(trimmed[4..].to_string(), Style::default().fg(secondary_color).bold())));
         } else if trimmed == "---" {
             lines.push(Line::from("────────────────────────────────────────────────────────────────").dark_gray());
         } else if in_code_block || (trimmed.starts_with('{') || trimmed.starts_with('"') || trimmed.starts_with('}')) {
@@ -162,10 +174,10 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
             let mut spans = Vec::new();
             if trimmed.contains(':') {
                 let parts: Vec<&str> = line.splitn(2, ':').collect();
-                spans.push(Span::styled(parts[0].to_string(), Style::default().fg(Color::Cyan)));
+                spans.push(Span::styled(parts[0].to_string(), Style::default().fg(json_key_color)));
                 spans.push(Span::raw(":"));
                 if parts.len() > 1 {
-                    spans.push(Span::styled(parts[1].to_string(), Style::default().fg(Color::Yellow)));
+                    spans.push(Span::styled(parts[1].to_string(), Style::default().fg(json_value_color)));
                 }
             } else {
                 spans.push(Span::styled(line.to_string(), Style::default().fg(Color::Rgb(200, 200, 200))));
@@ -178,7 +190,7 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
                 let parts: Vec<&str> = line.split("**").collect();
                 for (i, part) in parts.iter().enumerate() {
                     if i % 2 == 1 {
-                        spans.push(Span::styled(part.to_string(), Style::default().bold().fg(Color::Yellow)));
+                        spans.push(Span::styled(part.to_string(), Style::default().bold().fg(json_value_color)));
                     } else {
                         spans.push(Span::raw(part.to_string()));
                     }
@@ -194,9 +206,9 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
         .wrap(ratatui::widgets::Wrap { trim: false })
         .scroll((app.detail_scroll, 0))
         .block(Block::default()
-            .title(Span::styled(format!(" {} ", title), Style::default().fg(Color::Magenta).bold()))
+            .title(Span::styled(format!(" {} ", title), Style::default().fg(primary_color).bold()))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(49, 50, 68)))
+            .border_style(Style::default().fg(sidebar_bg))
             .padding(Padding::uniform(1)));
     f.render_widget(p, area);
 }

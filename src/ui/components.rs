@@ -1,4 +1,5 @@
 use crate::app::{App, ProjectSort};
+use crate::ui::theme;
 use ratatui::{
     layout::{Rect, Alignment},
     style::{Color, Modifier, Style},
@@ -17,12 +18,16 @@ pub fn render_security_banner(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub fn render_rail(f: &mut Frame, app: &App, area: Rect) {
+    let theme = app.state.as_ref().map(|s| s.theme.clone()).unwrap_or_default();
+    let primary_color = theme::get_color(&theme.primary);
+    let sidebar_bg = theme::get_color(&theme.sidebar_bg);
+
     let icons = vec!["󰭻", "󰄦", "󰓙", "󰤄", "󰏚", "󰓚", "󰃭", "󰄦", "󰒄", "󰒓"];
     let mut lines = Vec::new();
     lines.push(Line::from(""));
     for (i, icon) in icons.iter().enumerate() {
         let style = if (app.view as usize) == i {
-            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+            Style::default().fg(primary_color).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::DarkGray)
         };
@@ -30,19 +35,24 @@ pub fn render_rail(f: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(""));
     }
     let p = Paragraph::new(lines).alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::RIGHT).border_style(Style::default().fg(Color::Rgb(49, 50, 68))));
+        .block(Block::default().borders(Borders::RIGHT).border_style(Style::default().fg(sidebar_bg)));
     f.render_widget(p, area);
 }
 
 pub fn render_footer(f: &mut Frame, app: &App, area: Rect) {
+    let theme = app.state.as_ref().map(|s| s.theme.clone()).unwrap_or_default();
+    let sidebar_bg = theme::get_color(&theme.sidebar_bg);
+    let primary_color = theme::get_color(&theme.primary);
+    let secondary_color = theme::get_color(&theme.secondary);
+
     let mut spans = vec![
-        Span::styled(" 󰌒  1-9 View • j/k List • J/K Scroll • / Search • s Sort • e Export • q Quit • (Hold Shift to select text) ", Style::default().bg(Color::Rgb(49, 50, 68)).fg(Color::White))
+        Span::styled(" 󰌒  1-9 View • j/k List • J/K Scroll • / Search • s Sort • e Export • q Quit • (Hold Shift to select text) ", Style::default().bg(sidebar_bg).fg(Color::White))
     ];
     
     if app.is_searching {
-        spans.push(Span::styled(format!(" 󰍉 /{} ", app.search_query), Style::default().bg(Color::Magenta).fg(Color::White).bold()));
+        spans.push(Span::styled(format!(" 󰍉 /{} ", app.search_query), Style::default().bg(primary_color).fg(Color::White).bold()));
     } else if !app.search_query.is_empty() {
-        spans.push(Span::styled(format!(" 󰍉 Filter: {} (Esc to clear) ", app.search_query), Style::default().bg(Color::Rgb(49, 50, 68)).fg(Color::Cyan)));
+        spans.push(Span::styled(format!(" 󰍉 Filter: {} (Esc to clear) ", app.search_query), Style::default().bg(sidebar_bg).fg(secondary_color)));
     }
 
     // Add sort indicator if in Stats view
@@ -53,7 +63,7 @@ pub fn render_footer(f: &mut Frame, app: &App, area: Rect) {
             ProjectSort::Tokens => "Tokens",
             ProjectSort::Name => "Name",
         };
-        spans.push(Span::styled(format!(" 󰒺 Sort: {} ", sort_label), Style::default().bg(Color::Cyan).fg(Color::Black).bold()));
+        spans.push(Span::styled(format!(" 󰒺 Sort: {} ", sort_label), Style::default().bg(secondary_color).fg(Color::Black).bold()));
     }
 
     f.render_widget(Paragraph::new(Line::from(spans)), area);

@@ -141,6 +141,7 @@ impl Parser {
         let mcp_servers = mcp::discover_mcp_servers().unwrap_or_default();
         let skills = skills::discover_skills().unwrap_or_default();
         let settings = self.parse_settings().unwrap_or_default();
+        let theme = self.parse_theme().unwrap_or_default();
 
         let checker = HealthChecker::new();
         let now = chrono::Utc::now();
@@ -175,7 +176,19 @@ impl Parser {
             mcp_servers,
             skills,
             settings,
+            theme,
         })
+    }
+
+    pub fn parse_theme(&self) -> Result<Theme> {
+        let home = std::env::var("HOME")?;
+        let theme_path = Path::new(&home).join(".gemini").join("geminiscope_theme.json");
+        if theme_path.exists() {
+            let data = fs::read_to_string(theme_path)?;
+            let theme: Theme = serde_json::from_str(&data)?;
+            return Ok(theme);
+        }
+        Ok(Theme::default())
     }
 
     pub fn parse_settings(&self) -> Result<serde_json::Value> {
