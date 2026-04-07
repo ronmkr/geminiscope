@@ -1,4 +1,5 @@
-use crate::app::{App, ProjectSort};
+use crate::app::App;
+use crate::models::ProjectSort;
 use crate::ui::theme;
 use ratatui::{
     layout::{Rect, Alignment},
@@ -22,16 +23,15 @@ pub fn render_rail(f: &mut Frame, app: &App, area: Rect) {
     let primary_color = theme::get_color(&theme.primary);
     let sidebar_bg = theme::get_color(&theme.sidebar_bg);
 
-    let icons = vec!["󰭻", "󰄦", "󰓙", "󰤄", "󰏚", "󰓚", "󰃭", "󰄦", "󰒄", "󰒓"];
     let mut lines = Vec::new();
     lines.push(Line::from(""));
-    for (i, icon) in icons.iter().enumerate() {
-        let style = if (app.view as usize) == i {
+    for view in crate::models::View::all() {
+        let style = if app.view == view {
             Style::default().fg(primary_color).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::DarkGray)
         };
-        lines.push(Line::from(Span::styled(*icon, style)));
+        lines.push(Line::from(Span::styled(view.icon().to_string(), style)));
         lines.push(Line::from(""));
     }
     let p = Paragraph::new(lines).alignment(Alignment::Center)
@@ -54,7 +54,7 @@ pub fn render_footer(f: &mut Frame, app: &App, area: Rect) {
         ]
     } else {
         vec![
-            Span::styled(" 󰌒  1-9 View • j/k List • J/K Scroll • / Search • s Sort • e Export • ?: Help • q Quit ", Style::default().bg(sidebar_bg).fg(Color::White))
+            Span::styled(" 󰌒  1-9 View • j/k List • J/K Scroll • / Search • d Diff • o Open • s Sort • e Export • ?: Help • q Quit ", Style::default().bg(sidebar_bg).fg(Color::White))
         ]
     };
     
@@ -66,7 +66,7 @@ pub fn render_footer(f: &mut Frame, app: &App, area: Rect) {
         }
 
         // Add sort indicator if in Stats view
-        if app.view == crate::app::View::Stats {
+        if app.view == crate::models::View::Stats {
             let sort_label = match app.sort_mode {
                 ProjectSort::Date => "Date",
                 ProjectSort::Cost => "Cost",
@@ -135,7 +135,7 @@ pub fn render_help_modal(f: &mut Frame, app: &App) {
         Line::from(""),
         Line::from(vec![Span::styled(" Icons ", Style::default().fg(primary_color).bold())]),
         Line::from(vec![Span::raw("  󰭻 Chats  󰄦 Stats  󰓙 Tools  󰤄 Memory  󰏚 Plans ")]),
-        Line::from(vec![Span::raw("  󰓚 Health  󰃭 Timeline  󰄦 Skills  󰒄 MCP  󰒓 Settings ")]),
+        Line::from(vec![Span::raw("  󰓚 Health  󰃭 Timeline  󰛨 Skills  󰒄 MCP  󰒓 Settings ")]),
     ];
 
     let p = Paragraph::new(help_text)
@@ -188,29 +188,9 @@ pub fn render_setting_edit_modal(f: &mut Frame, app: &App) {
     f.render_widget(p, input_area);
 }
 
-pub fn format_session_full_text(sess: &crate::models::Session) -> String {
-    let mut text = String::new();
-    for msg in &sess.messages {
-        let header = if msg.msg_type == "user" { "USER" } else { "GEMINI" };
-        text.push_str(&format!("### {}\n", header));
-        text.push_str(&format_raw_content(&msg.content));
-        text.push_str("\n\n");
-    }
-    text
-}
-
-pub fn format_raw_content(content: &serde_json::Value) -> String {
-    if let Some(s) = content.as_str() { return s.to_string(); }
-    if let Some(arr) = content.as_array() {
-        return arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("");
-    }
-    "".to_string()
-}
-
 fn truncate_json_strings(v: &mut serde_json::Value) {
     match v {
         serde_json::Value::String(s) => {
-            // Trim whitespace first to avoid empty space gaps
             let trimmed = s.trim();
             let newlines = trimmed.matches('\n').count();
             if trimmed.len() > 1000 || newlines > 20 {
@@ -220,17 +200,8 @@ fn truncate_json_strings(v: &mut serde_json::Value) {
                 *s = trimmed.to_string();
             }
         },
-
-        serde_json::Value::Array(a) => {
-            for item in a {
-                truncate_json_strings(item);
-            }
-        },
-        serde_json::Value::Object(o) => {
-            for (_, val) in o.iter_mut() {
-                truncate_json_strings(val);
-            }
-        },
+        serde_json::Value::Array(a) => { for item in a { truncate_json_strings(item); } },
+        serde_json::Value::Object(o) => { for (_, val) in o.iter_mut() { truncate_json_strings(val); } },
         _ => {}
     }
 }
@@ -239,39 +210,16 @@ pub fn clean_json(v: &serde_json::Value) -> String {
     let mut cloned = v.clone();
     truncate_json_strings(&mut cloned);
     let pretty = serde_json::to_string_pretty(&cloned).unwrap_or_default();
-    pretty.lines()
-        .filter(|l| !l.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+    pretty.lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join("\n")
 }
 
 pub fn format_md_content(content: &serde_json::Value) -> String {
-    let raw = if let Some(s) = content.as_str() { s.to_string() }
+    if let Some(s) = content.as_str() { s.trim().to_string() }
     else if let Some(arr) = content.as_array() {
-        arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("\n")
+        arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("\n").trim().to_string()
     } else {
         let js = content.to_string();
-        if js.len() > 10_000 {
-            format!("[Large Content: {} bytes]", js.len())
-        } else {
-            format!("```json\n{}\n```", serde_json::to_string_pretty(content).unwrap_or_default())
-        }
-    };
-    raw.trim().to_string()
-}
-
-pub fn format_session_search(sess: &crate::models::Session) -> String {
-    let mut text = String::new();
-    for msg in &sess.messages {
-        text.push_str(&format_value(&msg.content));
+        if js.len() > 10_000 { format!("[Large Content: {} bytes]", js.len()) }
+        else { format!("```json\n{}\n```", serde_json::to_string_pretty(content).unwrap_or_default()) }
     }
-    text
-}
-
-pub fn format_value(content: &serde_json::Value) -> String {
-    if let Some(s) = content.as_str() { return s.to_string(); }
-    if let Some(arr) = content.as_array() {
-        return arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("");
-    }
-    format!("{}", content)
 }

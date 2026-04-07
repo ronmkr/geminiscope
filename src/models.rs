@@ -2,6 +2,70 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
+#[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
+pub enum View {
+    Chats,
+    Stats,
+    Tools,
+    Memory,
+    Plans,
+    Health,
+    Timeline,
+    Skills,
+    MCP,
+    Settings,
+    Diff,
+}
+
+impl View {
+    pub fn title(&self) -> &str {
+        match self {
+            Self::Chats => " CHATS ",
+            Self::Stats => " PROJECTS ",
+            Self::Tools => " TOOLS ",
+            Self::Memory => " MEMORY ",
+            Self::Plans => " PLANS ",
+            Self::Health => " HEALTH ",
+            Self::Timeline => " TIMELINE ",
+            Self::Skills => " SKILLS ",
+            Self::MCP => " MCPS ",
+            Self::Settings => " SETTINGS ",
+            Self::Diff => " DIFF ",
+        }
+    }
+
+    pub fn icon(&self) -> &str {
+        match self {
+            Self::Chats => "󰭻",
+            Self::Stats => "󰄦",
+            Self::Tools => "󰓙",
+            Self::Memory => "󰤄",
+            Self::Plans => "󰏚",
+            Self::Health => "󰓚",
+            Self::Timeline => "󰃭",
+            Self::Skills => "󰛨",
+            Self::MCP => "󰒄",
+            Self::Settings => "󰒓",
+            Self::Diff => "󰒺",
+        }
+    }
+
+    pub fn all() -> Vec<Self> {
+        vec![
+            Self::Chats, Self::Stats, Self::Tools, Self::Memory, Self::Plans,
+            Self::Health, Self::Timeline, Self::Skills, Self::MCP, Self::Settings, Self::Diff
+        ]
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
+pub enum ProjectSort {
+    Date,
+    Cost,
+    Tokens,
+    Name,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
     pub projects: Vec<Project>,
@@ -13,6 +77,19 @@ pub struct State {
     pub skills: Vec<Skill>,
     pub settings: serde_json::Value,
     pub theme: Theme,
+}
+
+impl State {
+    pub fn filtered_sessions(&self, query: &str) -> Vec<&Session> {
+        if query.is_empty() {
+            self.all_sessions.iter().collect()
+        } else {
+            let q = query.to_lowercase();
+            self.all_sessions.iter()
+                .filter(|s| s.search_text().to_lowercase().contains(&q))
+                .collect()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +162,23 @@ pub struct Session {
     pub messages: Vec<Message>,
 }
 
+impl Session {
+    pub fn search_text(&self) -> String {
+        self.messages.iter().map(|m| m.search_text()).collect::<Vec<_>>().join(" ")
+    }
+
+    pub fn full_text(&self) -> String {
+        let mut text = String::new();
+        for msg in &self.messages {
+            let header = if msg.msg_type == "user" { "USER" } else { "GEMINI" };
+            text.push_str(&format!("### {}\n", header));
+            text.push_str(&msg.raw_content());
+            text.push_str("\n\n");
+        }
+        text
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
@@ -97,6 +191,24 @@ pub struct Message {
     pub model: Option<String>,
     #[serde(rename = "toolCalls")]
     pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+impl Message {
+    pub fn raw_content(&self) -> String {
+        format_value(&self.content)
+    }
+
+    pub fn search_text(&self) -> String {
+        self.raw_content()
+    }
+}
+
+pub fn format_value(content: &serde_json::Value) -> String {
+    if let Some(s) = content.as_str() { return s.to_string(); }
+    if let Some(arr) = content.as_array() {
+        return arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("");
+    }
+    format!("{}", content)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,4 +272,40 @@ pub struct HealthIssue {
 pub struct TimelineEvent {
     pub session: Session,
     pub project: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_format_value() {
+        assert_eq!(format_value(&json!("hello")), "hello");
+        assert_eq!(format_value(&json!([{"text": "foo"}, {"text": "bar"}])), "foobar");
+        assert_eq!(format_value(&json!(123)), "123");
+    }
+
+    #[test]
+    fn test_session_search_text() {
+        let session = Session {
+            session_id: "1".to_string(),
+            project_hash: "h".to_string(),
+            start_time: Utc::now(),
+            last_updated: Utc::now(),
+            messages: vec![
+                Message {
+                    id: "m1".to_string(),
+                    timestamp: Utc::now(),
+                    msg_type: "user".to_string(),
+                    content: json!("hello world"),
+                    thoughts: None,
+                    tokens: None,
+                    model: None,
+                    tool_calls: None,
+                }
+            ],
+        };
+        assert!(session.search_text().contains("hello world"));
+    }
 }

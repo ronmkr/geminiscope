@@ -1,4 +1,4 @@
-use crate::models::State;
+use crate::models::{State, View, ProjectSort};
 use crate::parser::Parser;
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyEvent};
@@ -6,29 +6,6 @@ use notify::Watcher;
 use ratatui::widgets::ListState;
 use std::time::Duration;
 use tokio::sync::mpsc;
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum View {
-    Chats,
-    Stats,
-    Tools,
-    Memory,
-    Plans,
-    Health,
-    Timeline,
-    Skills,
-    MCP,
-    Settings,
-    Diff,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum ProjectSort {
-    Date,
-    Cost,
-    Tokens,
-    Name,
-}
 
 pub struct App {
     pub view: View,
@@ -77,92 +54,82 @@ impl App {
         }
     }
 
-    pub async fn run<B: ratatui::backend::Backend>(mut self, mut terminal: ratatui::Terminal<B>) -> Result<()> 
-    where 
-        B::Error: std::error::Error + Send + Sync + 'static 
-    {
-        let (tx, mut rx) = mpsc::channel(10);
-        let (refresh_tx, mut refresh_rx) = mpsc::channel::<()>(1);
-        let (save_tx, mut save_rx) = mpsc::channel::<serde_json::Value>(1);
+    pub async fn run<B: ratatui::backend::Backend>(mut self, mut terminal: ratatui::Terminal<B>) -> Result<()> {
+        let (tx, mut rx) = mpsc::channel(100);
+        let (save_tx, mut save_rx) = mpsc::channel::<serde_json::Value>(10);
+        let (refresh_tx, mut refresh_rx) = mpsc::channel(1);
+        
         let parser = Parser::new()?;
-        let base_dir = parser.base_dir.clone();
+        let parser_arc = std::sync::Arc::new(parser);
+        let parser_clone = parser_arc.clone();
 
-        // 1. Setup Watcher
-        let notify_tx = refresh_tx.clone();
-        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if res.is_ok() {
-                let _ = notify_tx.blocking_send(());
-            }
-        })?;
-
-        if base_dir.exists() {
-            watcher.watch(&base_dir, notify::RecursiveMode::Recursive)?;
-        }
-
-        // 2. Background Sync Task
-        let p_save = Parser::new()?;
-        let p_refresh = Parser::new()?;
+        // Background worker for settings saving
+        let parser_save = parser_arc.clone();
         tokio::spawn(async move {
-            // Initial load
-            if let Ok(new_state) = p_refresh.get_full_state() {
-                let _ = tx.send(new_state).await;
-            }
-
-            loop {
-                tokio::select! {
-                    Some(_) = refresh_rx.recv() => {
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        while let Ok(_) = refresh_rx.try_recv() {}
-                        if let Ok(new_state) = p_refresh.get_full_state() {
-                            let _ = tx.send(new_state).await;
-                        }
-                    }
-                    Some(settings) = save_rx.recv() => {
-                        let _ = p_save.save_settings(&settings);
-                        // Trigger immediate refresh after save
-                        if let Ok(new_state) = p_refresh.get_full_state() {
-                            let _ = tx.send(new_state).await;
-                        }
-                    }
-                    else => break,
-                }
+            while let Some(settings) = save_rx.recv().await {
+                let _ = parser_save.save_settings(&settings);
             }
         });
 
-        while !self.should_quit {
-            terminal.draw(|f| crate::ui::render(f, &mut self))?;
+        // Watcher for live updates
+        let refresh_tx_watcher = refresh_tx.clone();
+        let mut watcher = notify::recommended_watcher(move |res| {
+            if let Ok(_) = res {
+                let _ = refresh_tx_watcher.try_send(());
+            }
+        })?;
+        watcher.watch(&parser_arc.base_dir, notify::RecursiveMode::Recursive)?;
 
-            if event::poll(Duration::from_millis(50))? {
-                match event::read()? {
-                    Event::Key(key) => {
-                        if key.kind == KeyEventKind::Press {
-                            self.handle_key(key, &save_tx);
-                        }
+        // Initial load
+        let initial_tx = tx.clone();
+        let initial_parser = parser_arc.clone();
+        tokio::spawn(async move {
+            if let Ok(state) = initial_parser.get_full_state() {
+                let _ = initial_tx.send(state).await;
+            }
+        });
+
+        let mut ticker = tokio::time::interval(Duration::from_millis(100));
+
+        loop {
+            if self.should_quit { break; }
+
+            terminal.draw(|f| crate::ui::render(f, &mut self))
+                .map_err(|e| anyhow::anyhow!("Terminal error: {}", e))?;
+
+            tokio::select! {
+                _ = ticker.tick() => {
+                    if let Ok(_) = refresh_rx.try_recv() {
+                        let tx = tx.clone();
+                        let p = parser_clone.clone();
+                        tokio::spawn(async move {
+                            if let Ok(state) = p.get_full_state() {
+                                let _ = tx.send(state).await;
+                            }
+                        });
+                        // Drain all pending refresh signals
+                        while refresh_rx.try_recv().is_ok() {}
                     }
-                    Event::Mouse(mouse) => {
-                        match mouse.kind {
-                            event::MouseEventKind::ScrollDown => self.detail_scroll = self.detail_scroll.saturating_add(3),
-                            event::MouseEventKind::ScrollUp => self.detail_scroll = self.detail_scroll.saturating_sub(3),
-                            _ => {}
-                        }
-                    }
-                    _ => {}
                 }
-            }
-
-            // Drain all pending updates
-            let mut state_updated = false;
-            while let Ok(new_state) = rx.try_recv() {
-                self.state = Some(new_state);
-                state_updated = true;
-            }
-
-            if state_updated {
-                self.is_loading = false;
-                if self.list_state.selected().is_none() {
-                    if let Some(s) = &self.state {
-                        if !s.all_sessions.is_empty() {
-                            self.list_state.select(Some(0));
+                Some(new_state) = rx.recv() => {
+                    self.state = Some(new_state);
+                    self.is_loading = false;
+                    if self.list_state.selected().is_none() {
+                        if let Some(s) = &self.state {
+                            if !s.all_sessions.is_empty() {
+                                self.list_state.select(Some(0));
+                            }
+                        }
+                    }
+                }
+                res = tokio::task::spawn_blocking(|| event::poll(Duration::from_millis(10))) => {
+                    if let Ok(Ok(true)) = res {
+                        if let Event::Key(key) = event::read()? {
+                            if key.kind == KeyEventKind::Press {
+                                self.handle_key(key, &save_tx);
+                            }
+                        } else if let Event::Mouse(mouse) = event::read()? {
+                            self.handle_mouse(mouse);
                         }
                     }
                 }
@@ -171,126 +138,181 @@ impl App {
         Ok(())
     }
 
+    fn handle_mouse(&mut self, mouse: event::MouseEvent) {
+        match mouse.kind {
+            event::MouseEventKind::ScrollDown => self.detail_scroll = self.detail_scroll.saturating_add(3),
+            event::MouseEventKind::ScrollUp => self.detail_scroll = self.detail_scroll.saturating_sub(3),
+            event::MouseEventKind::Down(event::MouseButton::Left) => {
+                self.handle_rail_click(mouse.row, mouse.column);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_rail_click(&mut self, row: u16, col: u16) {
+        if col < 6 {
+            let y = i32::from(row);
+            if y >= 1 {
+                let icon_idx = (y - 1) / 2;
+                let all_views = View::all();
+                if let Some(&new_view) = all_views.get(icon_idx as usize) {
+                    if self.view != new_view {
+                        self.view = new_view;
+                        self.reset_view();
+                    }
+                }
+            }
+        }
+    }
+
     fn handle_key(&mut self, key: KeyEvent, save_tx: &mpsc::Sender<serde_json::Value>) {
         if self.is_showing_help {
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('q') => self.is_showing_help = false,
-                _ => {}
-            }
+            self.handle_help_key(key);
             return;
         }
-
         if self.is_editing_setting {
-            match key.code {
-                KeyCode::Esc => self.is_editing_setting = false,
-                KeyCode::Enter => {
-                    self.commit_setting_edit(save_tx);
-                    self.is_editing_setting = false;
-                }
-                KeyCode::Char(c) => {
-                    if self.edit_input.len() < 256 {
-                        self.edit_input.push(c);
-                    }
-                }
-                KeyCode::Backspace => { self.edit_input.pop(); }
-                _ => {}
-            }
+            self.handle_edit_key(key, save_tx);
             return;
         }
-
         if self.is_searching {
-            match key.code {
-                KeyCode::Esc => {
-                    self.is_searching = false;
-                    self.search_query.clear();
-                }
-                KeyCode::Enter => {
-                    self.is_searching = false;
-                }
-                KeyCode::Char(c) => {
-                    if self.search_query.len() < 256 {
-                        self.search_query.push(c);
-                        self.list_state.select(Some(0));
-                    }
-                }
-                KeyCode::Backspace => {
-                    self.search_query.pop();
-                    self.list_state.select(Some(0));
-                }
-                _ => {}
-            }
+            self.handle_search_key(key);
             return;
         }
+        self.handle_main_key(key, save_tx);
+    }
 
+    fn handle_help_key(&mut self, key: KeyEvent) {
         match key.code {
-            KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Esc => {
-                if !self.search_query.is_empty() {
-                    self.search_query.clear();
-                    self.list_state.select(Some(0));
-                } else if self.diff_target.is_some() {
-                    self.diff_target = None;
-                    self.last_action_msg = Some(("󰄬 Diff selection cleared".to_string(), std::time::Instant::now()));
-                } else if self.view == View::Diff {
-                    self.view = View::Chats;
-                    self.reset_view();
+            KeyCode::Esc | KeyCode::Char('?' | 'h' | 'q') => self.is_showing_help = false,
+            _ => {}
+        }
+    }
+
+    fn handle_edit_key(&mut self, key: KeyEvent, save_tx: &mpsc::Sender<serde_json::Value>) {
+        match key.code {
+            KeyCode::Esc => self.is_editing_setting = false,
+            KeyCode::Enter => {
+                self.commit_setting_edit(save_tx);
+                self.is_editing_setting = false;
+            }
+            KeyCode::Char(c) => {
+                if self.edit_input.len() < 256 {
+                    self.edit_input.push(c);
                 }
             }
-            KeyCode::Char('?') | KeyCode::Char('h') => self.is_showing_help = true,
-            KeyCode::Char('o') => self.handle_open_command(),
-            KeyCode::Char('d') => self.handle_diff_command(),
-            KeyCode::Char('r') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                self.is_redacting = !self.is_redacting;
-                let status = if self.is_redacting { "Enabled" } else { "Disabled" };
-                self.last_action_msg = Some((format!("󰒐 Secret Redaction: {}", status), std::time::Instant::now()));
-            }
-            KeyCode::Char('e') => self.export_current_view(),
-            KeyCode::Char('s') => {
-                self.sort_mode = match self.sort_mode {
-                    ProjectSort::Date => ProjectSort::Cost,
-                    ProjectSort::Cost => ProjectSort::Tokens,
-                    ProjectSort::Tokens => ProjectSort::Name,
-                    ProjectSort::Name => ProjectSort::Date,
-                };
-            }
-            KeyCode::Char('/') => {
-                self.is_searching = true;
+            KeyCode::Backspace => { self.edit_input.pop(); }
+            _ => {}
+        }
+    }
+
+    fn handle_search_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => {
+                self.is_searching = false;
                 self.search_query.clear();
             }
-            KeyCode::Char('1') => { self.view = View::Chats; self.reset_view(); }
-            KeyCode::Char('2') => { self.view = View::Stats; self.reset_view(); }
-            KeyCode::Char('3') => { self.view = View::Tools; self.reset_view(); }
-            KeyCode::Char('4') => { self.view = View::Memory; self.reset_view(); }
-            KeyCode::Char('5') => { self.view = View::Plans; self.reset_view(); }
-            KeyCode::Char('6') => { self.view = View::Health; self.reset_view(); }
-            KeyCode::Char('7') => { self.view = View::Timeline; self.reset_view(); }
-            KeyCode::Char('8') => { self.view = View::Skills; self.reset_view(); }
-            KeyCode::Char('9') => { self.view = View::MCP; self.reset_view(); }
-            KeyCode::Char('0') => { self.view = View::Settings; self.reset_view(); }
             KeyCode::Enter => {
-                if self.view == View::Settings {
-                    self.start_setting_edit(save_tx);
+                self.is_searching = false;
+            }
+            KeyCode::Char(c) => {
+                if self.search_query.len() < 256 {
+                    self.search_query.push(c);
+                    self.list_state.select(Some(0));
                 }
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) || key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
-                    self.detail_scroll = self.detail_scroll.saturating_add(1);
-                } else {
-                    self.move_cursor(1);
-                }
+            KeyCode::Backspace => {
+                self.search_query.pop();
+                self.list_state.select(Some(0));
             }
-            KeyCode::Up | KeyCode::Char('k') => {
-                if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) || key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
-                    self.detail_scroll = self.detail_scroll.saturating_sub(1);
-                } else {
-                    self.move_cursor(-1);
-                }
-            }
+            _ => {}
+        }
+    }
+
+    fn handle_main_key(&mut self, key: KeyEvent, save_tx: &mpsc::Sender<serde_json::Value>) {
+        match key.code {
+            KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Esc => self.handle_esc(),
+            KeyCode::Char('?' | 'h') => self.is_showing_help = true,
+            KeyCode::Char('d') => self.handle_diff_command(),
+            KeyCode::Char('o') => self.handle_open_command(),
+            KeyCode::Char('r') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => self.toggle_redaction(),
+            KeyCode::Char('e') => self.export_current_view(),
+            KeyCode::Char('s') => self.cycle_sort(),
+            KeyCode::Char('/') => self.start_search(),
+            KeyCode::Char(c) if c.is_ascii_digit() => self.switch_view_by_digit(c),
+            KeyCode::Enter => self.handle_enter(save_tx),
+            KeyCode::Down | KeyCode::Char('j') => self.handle_down(key.modifiers),
+            KeyCode::Up | KeyCode::Char('k') => self.handle_up(key.modifiers),
             KeyCode::Char('J') => self.detail_scroll = self.detail_scroll.saturating_add(1),
             KeyCode::Char('K') => self.detail_scroll = self.detail_scroll.saturating_sub(1),
             KeyCode::PageDown => self.detail_scroll = self.detail_scroll.saturating_add(10),
             KeyCode::PageUp => self.detail_scroll = self.detail_scroll.saturating_sub(10),
             _ => {}
+        }
+    }
+
+    fn handle_esc(&mut self) {
+        if !self.search_query.is_empty() {
+            self.search_query.clear();
+            self.list_state.select(Some(0));
+        } else if self.diff_target.is_some() {
+            self.diff_target = None;
+            self.last_action_msg = Some(("󰄬 Diff selection cleared".to_string(), std::time::Instant::now()));
+        } else if self.view == View::Diff {
+            self.view = View::Chats;
+            self.reset_view();
+        }
+    }
+
+    fn toggle_redaction(&mut self) {
+        self.is_redacting = !self.is_redacting;
+        let status = if self.is_redacting { "Enabled" } else { "Disabled" };
+        self.last_action_msg = Some((format!("󰒐 Secret Redaction: {status}"), std::time::Instant::now()));
+    }
+
+    fn cycle_sort(&mut self) {
+        self.sort_mode = match self.sort_mode {
+            ProjectSort::Date => ProjectSort::Cost,
+            ProjectSort::Cost => ProjectSort::Tokens,
+            ProjectSort::Tokens => ProjectSort::Name,
+            ProjectSort::Name => ProjectSort::Date,
+        };
+    }
+
+    fn start_search(&mut self) {
+        self.is_searching = true;
+        self.search_query.clear();
+    }
+
+    fn switch_view_by_digit(&mut self, c: char) {
+        let all_views = View::all();
+        let digit = c.to_digit(10).unwrap_or(0) as usize;
+        let idx = if digit == 0 { 9 } else { digit - 1 };
+        if let Some(&new_view) = all_views.get(idx) {
+            self.view = new_view;
+            self.reset_view();
+        }
+    }
+
+    fn handle_enter(&mut self, save_tx: &mpsc::Sender<serde_json::Value>) {
+        if self.view == View::Settings {
+            self.start_setting_edit(save_tx);
+        }
+    }
+
+    fn handle_down(&mut self, modifiers: crossterm::event::KeyModifiers) {
+        if modifiers.contains(crossterm::event::KeyModifiers::ALT) || modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+            self.detail_scroll = self.detail_scroll.saturating_add(1);
+        } else {
+            self.move_cursor(1);
+        }
+    }
+
+    fn handle_up(&mut self, modifiers: crossterm::event::KeyModifiers) {
+        if modifiers.contains(crossterm::event::KeyModifiers::ALT) || modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+            self.detail_scroll = self.detail_scroll.saturating_sub(1);
+        } else {
+            self.move_cursor(-1);
         }
     }
 
@@ -303,43 +325,13 @@ impl App {
 
     fn move_cursor(&mut self, delta: i32) {
         if let Some(state) = &self.state {
-            let count = match self.view {
-                View::Chats | View::Tools => {
-                    if self.search_query.is_empty() {
-                        state.all_sessions.len()
-                    } else {
-                        state.all_sessions.iter().filter(|s| {
-                            format_session_search(s).to_lowercase().contains(&self.search_query.to_lowercase())
-                        }).count()
-                    }
-                },
-                View::Stats => state.projects.len() + 1,
-                View::Memory => state.projects.iter().map(|p| p.memory_files.len()).sum(),
-                View::Plans => state.projects.iter().map(|p| p.plan_files.len()).sum(),
-                View::Health => state.health.len(),
-                View::Timeline => state.timeline.len(),
-                View::Skills => state.skills.len(),
-                View::MCP => state.mcp_servers.len(),
-                View::Settings => {
-                    let mut count = 0;
-                    let mut last_section = String::new();
-                    for (path, _, _) in crate::ui::infrastructure::get_all_settings(state) {
-                        let section = path.split('.').next().unwrap_or("").to_uppercase();
-                        if section != last_section {
-                            count += 1; // Section header
-                            last_section = section;
-                        }
-                        count += 1; // Setting item
-                    }
-                    count
-                },
-                View::Diff => 1,
-            };
+            let handler = crate::ui::handlers::get_handler(self.view);
+            let count = handler.count(state, &self.search_query);
+            
             if count == 0 { return; }
             let current = self.list_state.selected().unwrap_or(0);
             let mut next = (current as i32 + delta).rem_euclid(count as i32) as usize;
             
-            // Skip over non-selectable headers in settings view
             if self.view == View::Settings {
                 if crate::ui::infrastructure::get_setting_at_index(state, next).is_none() {
                     next = (next as i32 + delta.signum()).rem_euclid(count as i32) as usize;
@@ -402,8 +394,6 @@ impl App {
     fn commit_setting_edit(&mut self, save_tx: &mpsc::Sender<serde_json::Value>) {
         if let Some(state) = &mut self.state {
             let mut settings = state.settings.clone();
-            
-            // Try to parse number if it looks like one
             let new_val = if let Ok(n) = self.edit_input.parse::<i64>() {
                 serde_json::Value::Number(n.into())
             } else if let Ok(f) = self.edit_input.parse::<f64>() {
@@ -424,13 +414,29 @@ impl App {
             let path = match self.view {
                 View::Memory => {
                     let mut all_files = Vec::new();
-                    for p in &state.projects { for f in &p.memory_files { all_files.push(&f.path); } }
-                    all_files.get(selected).cloned()
+                    let mut seen = std::collections::HashSet::new();
+                    for p in &state.projects { 
+                        for f in &p.memory_files { 
+                            if !seen.contains(&f.path) {
+                                all_files.push(&f.path); 
+                                seen.insert(f.path.clone());
+                            }
+                        } 
+                    }
+                    all_files.get(selected).copied()
                 },
                 View::Plans => {
                     let mut all_files = Vec::new();
-                    for p in &state.projects { for f in &p.plan_files { all_files.push(&f.path); } }
-                    all_files.get(selected).cloned()
+                    let mut seen = std::collections::HashSet::new();
+                    for p in &state.projects { 
+                        for f in &p.plan_files { 
+                            if !seen.contains(&f.path) {
+                                all_files.push(&f.path); 
+                                seen.insert(f.path.clone());
+                            }
+                        } 
+                    }
+                    all_files.get(selected).copied()
                 },
                 _ => return,
             };
@@ -441,26 +447,14 @@ impl App {
                     .and_then(|e| e.as_str())
                     .unwrap_or("vim");
                 
-                // Suspend terminal
                 let _ = crossterm::terminal::disable_raw_mode();
-                let _ = crossterm::execute!(
-                    std::io::stdout(), 
-                    crossterm::terminal::LeaveAlternateScreen, 
-                    crossterm::event::DisableMouseCapture
-                );
-                
+                let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen, crossterm::event::DisableMouseCapture);
                 let res = crate::utils::open_in_editor(editor, file_path);
-
-                // Resume terminal
                 let _ = crossterm::terminal::enable_raw_mode();
-                let _ = crossterm::execute!(
-                    std::io::stdout(), 
-                    crossterm::terminal::EnterAlternateScreen, 
-                    crossterm::event::EnableMouseCapture
-                );
+                let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen, crossterm::event::EnableMouseCapture);
 
                 if let Err(err) = res {
-                    self.last_action_msg = Some((format!("⚠ Error opening editor: {}", err), std::time::Instant::now()));
+                    self.last_action_msg = Some((format!("⚠ Error opening editor: {err}"), std::time::Instant::now()));
                 }
             }
         }
@@ -469,31 +463,19 @@ impl App {
     fn handle_diff_command(&mut self) {
         if let Some(state) = &self.state {
             let selected = self.list_state.selected().unwrap_or(0);
-            let sessions: Vec<_> = match self.view {
-                View::Chats | View::Tools | View::Timeline => {
-                    if self.search_query.is_empty() {
-                        state.all_sessions.iter().collect()
-                    } else {
-                        let query = self.search_query.to_lowercase();
-                        state.all_sessions.iter().filter(|s| {
-                            crate::ui::components::format_session_search(s).to_lowercase().contains(&query)
-                        }).collect()
-                    }
-                }
+            let sessions = match self.view {
+                View::Chats | View::Tools | View::Timeline => state.filtered_sessions(&self.search_query),
                 _ => return,
             };
 
             if let Some(sess) = sessions.get(selected) {
                 let current_id = sess.session_id.clone();
-                
                 if let Some(target_id) = &self.diff_target {
                     if target_id == &current_id {
                         self.last_action_msg = Some(("⚠ Cannot diff a session with itself".to_string(), std::time::Instant::now()));
                         return;
                     }
-                    
-                    // Generate diff
-                    if let (Some(s1), Some(s2)) = (state.all_sessions.iter().find(|s| &s.session_id == target_id), Some(sess)) {
+                    if let (Some(s1), Some(s2)) = (state.all_sessions.iter().find(|s| &s.session_id == target_id), Some(*sess)) {
                         self.diff_results = Some((target_id.clone(), current_id.clone(), self.generate_diff(s1, s2)));
                         self.view = View::Diff;
                         self.diff_target = None;
@@ -509,22 +491,18 @@ impl App {
 
     fn generate_diff(&self, s1: &crate::models::Session, s2: &crate::models::Session) -> String {
         use similar::{ChangeTag, TextDiff};
-        
-        let t1 = crate::ui::components::format_session_full_text(s1);
-        let t2 = crate::ui::components::format_session_full_text(s2);
-        
+        let t1 = s1.full_text();
+        let t2 = s2.full_text();
         let diff = TextDiff::from_lines(&t1, &t2);
         let mut result = String::new();
-        
         result.push_str(&format!("# Diff: {} vs {}\n\n", &s1.session_id[..8], &s2.session_id[..8]));
-        
         for change in diff.iter_all_changes() {
             let sign = match change.tag() {
                 ChangeTag::Delete => "-",
                 ChangeTag::Insert => "+",
                 ChangeTag::Equal => " ",
             };
-            result.push_str(&format!("{}{}", sign, change));
+            result.push_str(&format!("{sign}{change}"));
         }
         result
     }
@@ -534,18 +512,10 @@ impl App {
             let selected = self.list_state.selected().unwrap_or(0);
             match self.view {
                 View::Chats | View::Tools | View::Timeline => {
-                    let filtered: Vec<_> = if self.search_query.is_empty() {
-                        state.all_sessions.iter().collect()
-                    } else {
-                        let query = self.search_query.to_lowercase();
-                        state.all_sessions.iter().filter(|s| {
-                            crate::ui::components::format_session_search(s).to_lowercase().contains(&query)
-                        }).collect()
-                    };
+                    let filtered = state.filtered_sessions(&self.search_query);
                     if let Some(sess) = filtered.get(selected) {
                         if let Ok(json) = serde_json::to_string_pretty(sess) {
                             let filename = format!("geminiscope_session_{}.json", &sess.session_id[..8]);
-                            
                             #[cfg(unix)]
                             {
                                 use std::os::unix::fs::OpenOptionsExt;
@@ -554,14 +524,14 @@ impl App {
                                 options.write(true).create(true).truncate(true).mode(0o600);
                                 if let Ok(mut file) = options.open(&filename) {
                                     if file.write_all(json.as_bytes()).is_ok() {
-                                        self.last_action_msg = Some((format!("󰄬 Exported (Private) to {}", filename), std::time::Instant::now()));
+                                        self.last_action_msg = Some((format!("󰄬 Exported (Private) to {filename}"), std::time::Instant::now()));
                                     }
                                 }
                             }
                             #[cfg(not(unix))]
                             {
                                 if std::fs::write(&filename, json).is_ok() {
-                                    self.last_action_msg = Some((format!("󰄬 Exported to {}", filename), std::time::Instant::now()));
+                                    self.last_action_msg = Some((format!("󰄬 Exported to {filename}"), std::time::Instant::now()));
                                 }
                             }
                         }
@@ -571,20 +541,4 @@ impl App {
             }
         }
     }
-}
-
-fn format_session_search(sess: &crate::models::Session) -> String {
-    let mut text = String::new();
-    for msg in &sess.messages {
-        text.push_str(&format_value(&msg.content));
-    }
-    text
-}
-
-fn format_value(content: &serde_json::Value) -> String {
-    if let Some(s) = content.as_str() { return s.to_string(); }
-    if let Some(arr) = content.as_array() {
-        return arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("");
-    }
-    format!("{}", content)
 }

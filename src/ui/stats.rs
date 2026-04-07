@@ -1,4 +1,5 @@
-use crate::app::{App, ProjectSort};
+use crate::app::App;
+use crate::models::{ProjectSort, State};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
@@ -6,8 +7,6 @@ use ratatui::{
     widgets::{Block, Borders, ListItem, Sparkline},
     Frame,
 };
-
-use crate::models::State;
 
 pub fn get_stats_list_items<'a>(state: &'a State, sort_mode: ProjectSort) -> Vec<ListItem<'a>> {
     let mut projects = state.projects.clone();
@@ -113,8 +112,8 @@ pub fn render_stats_detail(f: &mut Frame, app: &App, area: Rect) {
         .style(Style::default().fg(Color::Cyan));
     f.render_widget(sparkline, stats_chunks[0]);
 
-    let mut markdown = format!("# Workspace: {}\n**Cost**: ${:.4} • **Tokens**: {}\n**Input**: {} • **Output**: {}\n### Model Usage\n", 
-        stats_data.name, stats_data.cost, stats_data.total_tokens, stats_data.input, stats_data.output);
+    let mut markdown = format!("**Cost**: ${:.4} • **Tokens**: {}\n**Input**: {} • **Output**: {}\n### Model Usage\n", 
+        stats_data.cost, stats_data.total_tokens, stats_data.input, stats_data.output);
     for (m, c) in &stats_data.models { markdown.push_str(&format!("- **{}**: {} turns\n", m, c)); }
 
     crate::ui::render_markdown(f, app, stats_chunks[1], &title, &markdown);

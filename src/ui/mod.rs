@@ -3,7 +3,9 @@ pub mod explorer;
 pub mod stats;
 pub mod infrastructure;
 pub mod theme;
-use crate::app::{App, View};
+pub mod handlers;
+use crate::app::App;
+use crate::ui::handlers::get_handler;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
@@ -89,19 +91,7 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
     };
     let sort_mode = app.sort_mode;
 
-    let title = match view {
-        View::Chats => " CHATS ",
-        View::Stats => " PROJECTS ",
-        View::Tools => " TOOLS ",
-        View::Memory => " MEMORY ",
-        View::Plans => " PLANS ",
-        View::Health => " HEALTH ",
-        View::Timeline => " TIMELINE ",
-        View::Skills => " SKILLS ",
-        View::MCP => " MCPS ",
-        View::Settings => " SETTINGS ",
-        View::Diff => " DIFF ",
-    };
+    let title = view.title();
 
     let block = Block::default()
         .title(Span::styled(title, Style::default().fg(primary_color).bold()))
@@ -109,11 +99,8 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
         .border_style(Style::default().fg(sidebar_bg))
         .padding(Padding::horizontal(1));
 
-    let items = match view {
-        View::Chats | View::Tools | View::Timeline => explorer::get_explorer_list_items(state, view, search_query),
-        View::Stats => stats::get_stats_list_items(state, sort_mode),
-        _ => infrastructure::get_infra_list_items(state, view),
-    };
+    let handler = get_handler(view);
+    let items = handler.list_items(state, search_query, sort_mode);
 
     if items.is_empty() {
         let msg = if !app.search_query.is_empty() {
@@ -159,17 +146,8 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn render_content(f: &mut Frame, app: &App, area: Rect) {
     if app.is_loading || app.state.is_none() { return; }
-    
-    match app.view {
-        View::Chats | View::Tools | View::Timeline => explorer::render_explorer_detail(f, app, area),
-        View::Stats => stats::render_stats_detail(f, app, area),
-        View::Diff => {
-            if let Some((_, _, diff_text)) = &app.diff_results {
-                render_markdown(f, app, area, "Session Comparison", diff_text);
-            }
-        }
-        _ => infrastructure::render_infra_detail(f, app, area),
-    }
+    let handler = get_handler(app.view);
+    handler.render_detail(f, app, area);
 }
 
 /// Shared utility to render high-density text content with basic syntax highlighting

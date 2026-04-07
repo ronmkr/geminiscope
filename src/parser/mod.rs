@@ -32,11 +32,36 @@ impl Parser {
     }
 
     pub fn get_full_state(&self) -> Result<State> {
-        let projects = project::discover_projects(&self.base_dir, &self.session_cache)?;
+        let mut raw_projects = project::discover_projects(&self.base_dir, &self.session_cache)?;
+        
+        // 1. Deduplicate projects by path
+        let mut projects = Vec::new();
+        let mut seen_project_paths = std::collections::HashSet::new();
+        for p in raw_projects.drain(..) {
+            if !seen_project_paths.contains(&p.path) {
+                seen_project_paths.insert(p.path.clone());
+                projects.push(p);
+            }
+        }
+
         let mut all_sessions = Vec::new();
         let mut timeline = Vec::new();
         let mut health = Vec::new();
-        
+        let mut seen_sessions = std::collections::HashSet::new();
+
+        // 2. Globally deduplicate sessions across all projects
+        for proj in &mut projects {
+            let mut unique_sessions = Vec::new();
+            for sess in proj.sessions.drain(..) {
+                if !seen_sessions.contains(&sess.session_id) {
+                    seen_sessions.insert(sess.session_id.clone());
+                    unique_sessions.push(sess);
+                }
+            }
+            proj.sessions = unique_sessions;
+        }
+
+        // 3. Process remaining unique state
         let mcp_servers = mcp::discover_mcp_servers().unwrap_or_default();
         let skills = skills::discover_skills().unwrap_or_default();
         let settings = config::parse_settings().unwrap_or_default();

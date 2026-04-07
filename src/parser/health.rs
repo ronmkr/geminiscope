@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::models::{Project, Session, HealthIssue, Skill, format_value};
 use entropy::shannon_entropy;
 use crate::parser::stats::get_pricing;
 use std::fs;
@@ -105,12 +105,4 @@ impl HealthChecker {
             });
         }
     }
-}
-
-fn format_value(content: &serde_json::Value) -> String {
-    if let Some(s) = content.as_str() { return s.to_string(); }
-    if let Some(arr) = content.as_array() {
-        return arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("");
-    }
-    format!("{}", content)
 }

@@ -1,5 +1,6 @@
-use crate::app::{App, View};
-use crate::ui::components::{format_session_search, format_raw_content, format_md_content, clean_json};
+use crate::app::App;
+use crate::models::{View, State};
+use crate::ui::components::{format_md_content, clean_json};
 use ratatui::{
     layout::Rect,
     style::Stylize,
@@ -8,23 +9,14 @@ use ratatui::{
     Frame,
 };
 
-use crate::models::State;
-
 pub fn get_explorer_list_items<'a>(state: &'a State, view: View, search_query: &str) -> Vec<ListItem<'a>> {
     match view {
         View::Chats | View::Tools => {
-            let filtered: Vec<_> = if search_query.is_empty() {
-                state.all_sessions.iter().collect()
-            } else {
-                let query = search_query.to_lowercase();
-                state.all_sessions.iter().filter(|s| {
-                    format_session_search(s).to_lowercase().contains(&query)
-                }).collect()
-            };
+            let filtered = state.filtered_sessions(search_query);
 
             filtered.into_iter().map(|s| {
                 let first_msg = s.messages.iter().find(|m| m.msg_type == "user")
-                    .map(|m| format_raw_content(&m.content))
+                    .map(|m| m.raw_content())
                     .unwrap_or_else(|| "Empty Session".to_string());
                 let title = if first_msg.len() > 25 { format!("{}...", &first_msg[..25]) } else { first_msg };
                 ListItem::new(vec![
@@ -35,7 +27,7 @@ pub fn get_explorer_list_items<'a>(state: &'a State, view: View, search_query: &
         },
         View::Timeline => state.timeline.iter().map(|e| {
             let preview = e.session.messages.iter().find(|m| m.msg_type == "user")
-                .map(|m| format_raw_content(&m.content))
+                .map(|m| m.raw_content())
                 .unwrap_or_else(|| "Empty".to_string());
             let title = if preview.len() > 20 { format!("{}...", &preview[..20]) } else { preview };
             ListItem::new(vec![
@@ -58,14 +50,7 @@ pub fn render_explorer_detail(f: &mut Frame, app: &App, area: Rect) {
 
     match app.view {
         View::Chats => {
-            let filtered: Vec<_> = if app.search_query.is_empty() {
-                state.all_sessions.iter().collect()
-            } else {
-                let query = app.search_query.to_lowercase();
-                state.all_sessions.iter().filter(|s| {
-                    format_session_search(s).to_lowercase().contains(&query)
-                }).collect()
-            };
+            let filtered = state.filtered_sessions(&app.search_query);
 
             if let Some(sess) = filtered.get(selected) {
                 title = format!(" Chat: {} ", &sess.session_id[..8]);
@@ -83,14 +68,7 @@ pub fn render_explorer_detail(f: &mut Frame, app: &App, area: Rect) {
             }
         },
         View::Tools => {
-            let filtered: Vec<_> = if app.search_query.is_empty() {
-                state.all_sessions.iter().collect()
-            } else {
-                let query = app.search_query.to_lowercase();
-                state.all_sessions.iter().filter(|s| {
-                    format_session_search(s).to_lowercase().contains(&query)
-                }).collect()
-            };
+            let filtered = state.filtered_sessions(&app.search_query);
 
             if let Some(sess) = filtered.get(selected) {
                 title = " Tool History ".to_string();
@@ -111,10 +89,10 @@ pub fn render_explorer_detail(f: &mut Frame, app: &App, area: Rect) {
         View::Timeline => {
             if let Some(e) = state.timeline.get(selected) {
                 title = format!(" Timeline: {} ", e.project);
-                markdown = format!("# Project: {}\n**Session ID**: {}\n**Time**: {}\n\n---\n", 
-                    e.project, e.session.session_id, e.session.last_updated);
+                markdown = format!("**Session ID**: {}\n**Time**: {}\n\n---\n", 
+                    e.session.session_id, e.session.last_updated);
                 for msg in &e.session.messages {
-                    markdown.push_str(&format!("### {}\n{}\n", msg.msg_type, format_raw_content(&msg.content)));
+                    markdown.push_str(&format!("### {}\n{}\n", msg.msg_type, msg.raw_content()));
                 }
             }
         },

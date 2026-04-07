@@ -1,4 +1,5 @@
-use crate::app::{App, View};
+use crate::app::App;
+use crate::models::{View, State};
 use ratatui::{
     layout::Rect,
     style::{Color, Style, Stylize},
@@ -7,7 +8,6 @@ use ratatui::{
     Frame,
 };
 use std::fs;
-use crate::models::State;
 
 pub struct SettingSchema {
     pub path: &'static str,
@@ -40,7 +40,7 @@ pub fn get_infra_list_items<'a>(state: &'a State, view: View) -> Vec<ListItem<'a
             for (path, val, is_default) in get_all_settings(state) {
                 let section = path.split('.').next().unwrap_or("").to_uppercase();
                 if section != last_section {
-                    items.push(ListItem::new(Line::from(format!("─── {} ───", section)).dark_gray()));
+                    items.push(ListItem::new(Line::from(format!("─── {} ───", section)).cyan().bold()));
                     last_section = section;
                 }
 
@@ -54,67 +54,30 @@ pub fn get_infra_list_items<'a>(state: &'a State, view: View) -> Vec<ListItem<'a
                 let key_parts: Vec<_> = path.split('.').collect();
                 let key_name = if key_parts.len() > 1 { key_parts[1..].join(".") } else { path.clone() };
 
-                let spans = vec![
-                    Span::raw(" "),
-                    if is_default { 
-                        Span::styled(key_name, Style::default().fg(Color::DarkGray))
-                    } else {
-                        Span::styled(key_name, Style::default().fg(Color::White).bold())
-                    },
-                    Span::raw(" "),
-                ];
-
                 items.push(ListItem::new(vec![
-                    Line::from(spans),
-                    Line::from(vec![Span::raw("   "), Span::styled(val_str, Style::default().fg(Color::Cyan))]),
+                    Line::from(vec![
+                        Span::raw(" "),
+                        if is_default { Span::styled(key_name, Style::default().fg(Color::DarkGray)) } 
+                        else { Span::styled(key_name, Style::default().fg(Color::White).bold()) },
+                    ]),
+                    Line::from(vec![Span::raw("   "), Span::styled(val_str, Style::default().fg(Color::Yellow))]),
                 ]));
             }
             items
         },
-        _ => { // Keep existing logic for other views
-            get_original_list_items(state, view)
-        }
-    }
-}
-
-pub fn get_all_settings(state: &State) -> Vec<(String, serde_json::Value, bool)> {
-    let mut results = Vec::new();
-    let current_flat = flatten_settings_helper(&state.settings, "");
-    let mut seen_paths = std::collections::HashSet::new();
-
-    // 1. Add current settings from file
-    for (path, val) in current_flat {
-        results.push((path.clone(), val, false));
-        seen_paths.insert(path);
-    }
-
-    // 2. Add known settings if missing
-    for schema in get_known_settings() {
-        if !seen_paths.contains(schema.path) {
-            results.push((schema.path.to_string(), schema.default_val.clone(), true));
-        }
-    }
-
-    results.sort_by(|a, b| a.0.cmp(&b.0));
-    results
-}
-
-fn get_original_list_items<'a>(state: &'a State, view: View) -> Vec<ListItem<'a>> {
-    match view {
-        View::Memory => {
+        View::Memory | View::Plans => {
             let mut items = Vec::new();
+            let mut seen_file_paths = std::collections::HashSet::new();
             for p in &state.projects {
-                for f in &p.memory_files {
-                    items.push(ListItem::new(vec![Line::from(f.name.as_str()).bold(), Line::from(p.name.as_str()).dark_gray()]));
-                }
-            }
-            items
-        },
-        View::Plans => {
-            let mut items = Vec::new();
-            for p in &state.projects {
-                for f in &p.plan_files {
-                    items.push(ListItem::new(vec![Line::from(f.name.as_str()).bold(), Line::from(p.name.as_str()).dark_gray()]));
+                let files = if view == View::Memory { &p.memory_files } else { &p.plan_files };
+                for f in files {
+                    if !seen_file_paths.contains(&f.path) {
+                        items.push(ListItem::new(vec![
+                            Line::from(f.name.as_str()).bold(), 
+                            Line::from(p.name.as_str()).dark_gray()
+                        ]));
+                        seen_file_paths.insert(f.path.clone());
+                    }
                 }
             }
             items
@@ -135,14 +98,55 @@ fn get_original_list_items<'a>(state: &'a State, view: View) -> Vec<ListItem<'a>
                 ])
             }).collect()
         },
-        View::Skills => state.skills.iter().map(|s| {
-            ListItem::new(vec![Line::from(s.name.as_str()).bold(), Line::from(s.extension.as_str()).dark_gray()])
-        }).collect(),
-        View::MCP => state.mcp_servers.iter().map(|s| {
-            ListItem::new(vec![Line::from(s.name.as_str()).bold(), Line::from(if s.url.is_some() { "Remote" } else { "Local" }).dark_gray()])
-        }).collect(),
+        View::Skills => {
+            let mut items = Vec::new();
+            let mut seen_skills = std::collections::HashSet::new();
+            for s in &state.skills {
+                if !seen_skills.contains(&s.name) {
+                    items.push(ListItem::new(vec![Line::from(s.name.as_str()).bold(), Line::from(s.extension.as_str()).dark_gray()]));
+                    seen_skills.insert(s.name.clone());
+                }
+            }
+            items
+        },
+        View::MCP => {
+            let mut items = Vec::new();
+            let mut seen_mcps = std::collections::HashSet::new();
+            for s in &state.mcp_servers {
+                if !seen_mcps.contains(&s.name) {
+                    items.push(ListItem::new(vec![Line::from(s.name.as_str()).bold(), Line::from(if s.url.is_some() { "Remote" } else { "Local" }).dark_gray()]));
+                    seen_mcps.insert(s.name.clone());
+                }
+            }
+            items
+        },
         _ => Vec::new(),
     }
+}
+
+pub fn get_all_settings(state: &State) -> Vec<(String, serde_json::Value, bool)> {
+    let mut results = Vec::new();
+    let current_flat = flatten_settings_helper(&state.settings, "");
+    let mut seen_paths = std::collections::HashSet::new();
+
+    for (path, val) in current_flat {
+        let normalized = path.to_lowercase();
+        if !seen_paths.contains(&normalized) {
+            results.push((path.clone(), val, false));
+            seen_paths.insert(normalized);
+        }
+    }
+
+    for schema in get_known_settings() {
+        let normalized = schema.path.to_lowercase();
+        if !seen_paths.contains(&normalized) {
+            results.push((schema.path.to_string(), schema.default_val.clone(), true));
+            seen_paths.insert(normalized);
+        }
+    }
+
+    results.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    results
 }
 
 pub fn flatten_settings_helper(v: &serde_json::Value, prefix: &str) -> Vec<(String, serde_json::Value)> {
@@ -153,7 +157,7 @@ pub fn flatten_settings_helper(v: &serde_json::Value, prefix: &str) -> Vec<(Stri
         for k in keys {
             let new_prefix = if prefix.is_empty() { k.clone() } else { format!("{}.{}", prefix, k) };
             let val = &obj[k];
-            if val.is_object() && k != "mcpServers" { // Don't flatten MCP servers too deep
+            if val.is_object() && k != "mcpServers" {
                 items.extend(flatten_settings_helper(val, &new_prefix));
             } else {
                 items.push((new_prefix, val.clone()));
@@ -170,7 +174,7 @@ pub fn get_setting_at_index(state: &State, target_idx: usize) -> Option<(String,
     for (path, val, is_default) in get_all_settings(state) {
         let section = path.split('.').next().unwrap_or("").to_uppercase();
         if section != last_section {
-            if current_idx == target_idx { return None; } // Header selected
+            if current_idx == target_idx { return None; }
             current_idx += 1;
             last_section = section;
         }
@@ -193,18 +197,21 @@ pub fn render_infra_detail(f: &mut Frame, app: &App, area: Rect) {
 
     match app.view {
         View::Memory | View::Plans | View::Health | View::Skills | View::MCP => {
-             // ... (Keep existing logic for other views)
              render_original_infra_detail(f, app, area, state, selected);
              return;
         },
         View::Settings => {
             if let Some((path, val, is_default)) = get_setting_at_index(state, selected) {
                 title = format!(" Setting: {} ", path);
-                markdown = format!("# Setting: {}\n\n", path);
+                markdown = String::new(); // Removed duplicate # Setting header
+                
                 if is_default {
                     markdown.push_str(&format!("**Status**: [NOT SET - Showing Default]\n\n"));
+                } else {
+                    markdown.push_str("**Status**: [CONFIGURED]\n\n");
                 }
-                markdown.push_str(&format!("**Current Value**: `{}`\n\n", val));
+                
+                markdown.push_str(&format!("### Current Value\n`{}`\n\n", val));
                 markdown.push_str("---\n\n### Description\n");
                 markdown.push_str(&get_setting_description(&path));
                 markdown.push_str("\n\n*Press Enter to edit/set this value*");
@@ -227,14 +234,21 @@ fn get_setting_description(path: &str) -> String {
     "No detailed description available for this setting.".to_string()
 }
 
-// Helper to keep the file clean since I'm overwriting
 fn render_original_infra_detail(f: &mut Frame, app: &App, area: Rect, state: &State, selected: usize) {
     let mut markdown = String::new();
     let mut title = " Detail ".to_string();
     match app.view {
         View::Memory => {
             let mut all_files = Vec::new();
-            for p in &state.projects { for f in &p.memory_files { all_files.push(f); } }
+            let mut seen_paths = std::collections::HashSet::new();
+            for p in &state.projects { 
+                for f in &p.memory_files { 
+                    if !seen_paths.contains(&f.path) {
+                        all_files.push(f);
+                        seen_paths.insert(f.path.clone());
+                    }
+                } 
+            }
             if let Some(f) = all_files.get(selected) {
                 title = format!(" {} ", f.name);
                 markdown = fs::read_to_string(&f.path).unwrap_or_else(|_| "Error reading file".to_string());
@@ -242,7 +256,15 @@ fn render_original_infra_detail(f: &mut Frame, app: &App, area: Rect, state: &St
         },
         View::Plans => {
             let mut all_files = Vec::new();
-            for p in &state.projects { for f in &p.plan_files { all_files.push(f); } }
+            let mut seen_paths = std::collections::HashSet::new();
+            for p in &state.projects { 
+                for f in &p.plan_files { 
+                    if !seen_paths.contains(&f.path) {
+                        all_files.push(f);
+                        seen_paths.insert(f.path.clone());
+                    }
+                } 
+            }
             if let Some(f) = all_files.get(selected) {
                 title = format!(" {} ", f.name);
                 markdown = fs::read_to_string(&f.path).unwrap_or_else(|_| "Error reading file".to_string());
@@ -267,14 +289,30 @@ fn render_original_infra_detail(f: &mut Frame, app: &App, area: Rect, state: &St
             }
         },
         View::Skills => {
-            if let Some(s) = state.skills.get(selected) {
+            let mut all_skills = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for s in &state.skills {
+                if !seen.contains(&s.name) {
+                    all_skills.push(s);
+                    seen.insert(s.name.clone());
+                }
+            }
+            if let Some(s) = all_skills.get(selected) {
                 title = format!(" Skill: {} ", s.name);
                 markdown = format!("# Skill: {}\n**Extension**: {}\n\n> {}\n\n---\n\n## Definition\n```toml\n{}\n```", 
                     s.name, s.extension, s.description, s.content);
             }
         },
         View::MCP => {
-            if let Some(s) = state.mcp_servers.get(selected) {
+            let mut all_mcps = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for s in &state.mcp_servers {
+                if !seen.contains(&s.name) {
+                    all_mcps.push(s);
+                    seen.insert(s.name.clone());
+                }
+            }
+            if let Some(s) = all_mcps.get(selected) {
                 title = format!(" MCP: {} ", s.name);
                 markdown = format!("# MCP Server: {}\n", s.name);
                 if let Some(url) = &s.url { markdown.push_str(&format!("- **Remote URL**: {}\n", url)); }

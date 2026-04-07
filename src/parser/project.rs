@@ -23,24 +23,21 @@ pub fn discover_projects(
             let path = entry.path();
             if path.is_dir() {
                 // Canonicalize and ensure it's within HOME
-                if let Ok(canon_path) = path.canonicalize() {
-                    if !canon_path.starts_with(home_path) {
-                        continue;
-                    }
-                } else {
-                    continue;
-                }
+                let canon_path = match path.canonicalize() {
+                    Ok(p) if p.starts_with(home_path) => p,
+                    _ => continue,
+                };
 
-                let chats_dir = path.join("chats");
+                let chats_dir = canon_path.join("chats");
                 if chats_dir.exists() {
-                    if let Ok(sessions) = session::list_sessions(&path, session_cache) {
+                    if let Ok(sessions) = session::list_sessions(&canon_path, session_cache) {
                         if sessions.is_empty() { continue; }
                         
-                        let (memory_files, plan_files) = discover_files(&path);
+                        let (memory_files, plan_files) = discover_files(&canon_path);
                         
                         projects.push(Project {
                             name: entry.file_name().to_string_lossy().to_string(),
-                            path: path.to_string_lossy().to_string(),
+                            path: canon_path.to_string_lossy().to_string(),
                             sessions,
                             memory_files,
                             plan_files,
