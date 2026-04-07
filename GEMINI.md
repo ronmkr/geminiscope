@@ -9,6 +9,7 @@ Geminiscope is a high-performance Rust TUI dashboard for Gemini CLI, providing r
 | **Session Explorer** | ✅ Done | High-density custom renderer with syntax highlighting. |
 | **Real-time Tracking** | ✅ Done | Integrated `notify` events with debounced background parser. |
 | **Vim Bindings** | ✅ Done | `j/k` for navigation, `J/K` or `Alt+Arrows` for detail scrolling. |
+| **Mouse Navigation** | ✅ Done | Clickable rail icons and mouse wheel support. |
 | **Global Search** | ✅ Done | `/` to filter sessions by content across Chats and Tools. |
 | **Multi-Mode Sorting**| ✅ Done | Sort projects by Date, Cost, Tokens, or Name. |
 | **Cost Estimation** | ✅ Done | Pricing engine for Pro/Flash models + token math. |
@@ -19,6 +20,7 @@ Geminiscope is a high-performance Rust TUI dashboard for Gemini CLI, providing r
 | **Help Modal** | ✅ Done | Press `?` or `h` for integrated documentation. |
 | **Interactive Settings**| ✅ Done | Edit `settings.json` live via TUI with validation. |
 | **Theme Engine** | ✅ Done | Multi-theme support through `themes.json`. |
+| **Session Diffing** | ✅ Done | Compare two AI turns side-by-side using the `similar` crate. |
 
 ## 🛠️ Engineering Specs & Performance
 
@@ -34,28 +36,27 @@ AI logs can grow to several megabytes. Geminiscope maintains performance through
 - **Off-Thread Parsing**: All JSON deserialization happens outside the main event loop.
 - **On-Demand Export**: Users can bypass UI limits by exporting the full raw payload to disk for external viewing.
 
+### 3. Clean & Idiomatic Rust (v0.2.0+)
+- **Modular Architecture**: Decoupled UI using the `ViewHandler` trait and specialized sub-handlers.
+- **DRY Principles**: Centralized data formatting and search logic in `models.rs`.
+- **Zero Warnings**: Strictly adheres to `#![warn(clippy::all, clippy::pedantic)]` with zero warnings.
+- **Robust Error Handling**: Eliminated all unsafe `.unwrap()` calls in the core execution path.
+
 ## 🚀 Next Steps & Structural Improvements
 
-### 1. Architectural Refactoring
-- [x] **Modular UI**: Decoupled UI into specialized sub-modules (`explorer`, `stats`, `infrastructure`).
-- [x] **Parser Decomposition**: Moved specialized handlers (MCP, Session, Tokens, Config, Project) into dedicated modules.
-
-### 2. Advanced Features
-- [x] **Session Diffing**: Compare two AI turns to see how prompts or parameters changed.
+### 1. Advanced Features
 - [ ] **Remote MCP Dashboard**: Live health monitoring of remote MCP servers.
+- [ ] **Interactive Timeline**: Scrub through AI history using a visual time-slider.
 
-### 3. Security & Hardening
-- [x] **Secure Persistence**: Implement 0600 permissions for `settings.json` and session exports.
-- [x] **Atomic Saves**: Use temp-file-and-rename for configuration to prevent corruption.
-- [x] **Path Sanitization**: Validate `.project_root` and discovery paths to prevent traversal.
-- [x] **Input Guardrails**: Add length limits to search and setting inputs to prevent memory DoS.
-- [x] **Panic Audit**: Replace remaining `.unwrap()` calls in UI/Parser with graceful error handling.
-- [x] **Command Safety**: Ensure `preferredEditor` is executed safely without shell injection.
-- [x] **Path Canonicalization**: Strictly validate all discovered paths using `canonicalize()`.
-- [x] **Secret Redaction**: Mask identified secrets in the UI detail view by default.
+### 2. Security & Hardening (Completed)
+- [x] **Secure Persistence**: 0600 permissions for `settings.json` and session exports.
+- [x] **Atomic Saves**: Temp-file-and-rename for configuration to prevent corruption.
+- [x] **Path Sanitization**: Canonicalization and HOME-directory restriction.
+- [x] **Input Guardrails**: 256-char limits on all text inputs.
+- [x] **Secret Redaction**: Masking identified secrets in the UI by default (`Ctrl-R` to toggle).
 
 ## 🛠️ Tech Stack Notes
-- **Language**: Rust
+- **Language**: Rust (Edition 2024)
 - **TUI**: [ratatui](https://github.com/ratatui-org/ratatui)
 - **Async**: [tokio](https://github.com/tokio-rs/tokio)
 - **File Watching**: [notify](https://github.com/notify-rs/notify)
