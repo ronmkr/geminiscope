@@ -21,6 +21,14 @@ pub enum View {
     Settings,
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ProjectSort {
+    Date,
+    Cost,
+    Tokens,
+    Name,
+}
+
 pub struct App {
     pub view: View,
     pub state: Option<State>,
@@ -30,6 +38,7 @@ pub struct App {
     pub should_quit: bool,
     pub search_query: String,
     pub is_searching: bool,
+    pub sort_mode: ProjectSort,
 }
 
 impl App {
@@ -43,6 +52,7 @@ impl App {
             should_quit: false,
             search_query: String::new(),
             is_searching: false,
+            sort_mode: ProjectSort::Date,
         }
     }
 
@@ -154,6 +164,14 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('s') => {
+                self.sort_mode = match self.sort_mode {
+                    ProjectSort::Date => ProjectSort::Cost,
+                    ProjectSort::Cost => ProjectSort::Tokens,
+                    ProjectSort::Tokens => ProjectSort::Name,
+                    ProjectSort::Name => ProjectSort::Date,
+                };
+            }
             KeyCode::Char('/') => {
                 self.is_searching = true;
                 self.search_query.clear();
@@ -169,14 +187,14 @@ impl App {
             KeyCode::Char('9') => { self.view = View::MCP; self.reset_view(); }
             KeyCode::Char('0') => { self.view = View::Settings; self.reset_view(); }
             KeyCode::Down | KeyCode::Char('j') => {
-                if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) {
+                if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) || key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
                     self.detail_scroll = self.detail_scroll.saturating_add(1);
                 } else {
                     self.move_cursor(1);
                 }
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) {
+                if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) || key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
                     self.detail_scroll = self.detail_scroll.saturating_sub(1);
                 } else {
                     self.move_cursor(-1);
@@ -210,12 +228,13 @@ impl App {
                     }
                 },
                 View::Stats => state.projects.len() + 1,
+                View::Memory => state.projects.iter().map(|p| p.memory_files.len()).sum(),
+                View::Plans => state.projects.iter().map(|p| p.plan_files.len()).sum(),
                 View::Health => state.health.len(),
                 View::Timeline => state.timeline.len(),
                 View::Skills => state.skills.len(),
                 View::MCP => state.mcp_servers.len(),
                 View::Settings => state.settings.as_object().map_or(0, |o| o.len()),
-                _ => 0,
             };
             if count == 0 { return; }
             let current = self.list_state.selected().unwrap_or(0);

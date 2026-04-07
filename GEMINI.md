@@ -78,7 +78,7 @@ Background security and integrity checks.
 ### 2. Analytics & Cost
 - [x] **Model Pricing Engine:** Dynamic pricing per model turn.
 - [x] **Interactive Visuals:** Sparklines for token trends in the Stats view.
-- [ ] **Multi-Mode Sorting:** Sort projects by Cost, Tokens, or Name (currently fixed by date).
+- [x] **Multi-Mode Sorting:** Sort projects by Cost, Tokens, or Name.
 ### 3. Tool & Metadata Visualization
 - [x] **Searchable Tool Rail:** Dedicated view for tool discovery.
 - [x] **Context Browser:** Viewer for Project and Global `GEMINI.md`.
@@ -94,9 +94,8 @@ Background security and integrity checks.
 ## 🚀 Next Steps & Structural Improvements
 
 ### 1. Architectural Refactoring
-The project's core files (`parser.rs` and `ui.rs`) have grown significantly. To maintain high performance and scalability:
-- **`src/parser/` Module:** Decompose the parsing logic into specialized handlers (e.g., `session_handler.rs`, `mcp_handler.rs`, `token_handler.rs`).
-- **`src/ui/` Module:** Create a dedicated view-based architecture. Move session rendering to `explorer_view.rs`, and statistics to `stats_view.rs`.
+- [x] **Modular UI:** Decoupled `ui.rs` into `src/ui/` with specialized modules for explorer, stats, and infrastructure.
+- [ ] **`src/parser/` Module:** Decompose the parsing logic into specialized handlers (e.g., `session_handler.rs`, `mcp_handler.rs`, `token_handler.rs`).
 
 ### 2. Enhanced Configuration (Theme Support)
 - **Theme Engine:** Implement a `Theme` struct allowing users to customize colors via a `themes.json` file.
