@@ -36,7 +36,7 @@ pub fn render_rail(f: &mut Frame, app: &App, area: Rect) {
 
 pub fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     let mut spans = vec![
-        Span::styled(" 󰌒  1-9 Views • j/k List • J/K Scroll • / Search • s Sort • q Quit ", Style::default().bg(Color::Rgb(49, 50, 68)).fg(Color::White))
+        Span::styled(" 󰌒  1-9 View • j/k List • J/K Scroll • / Search • s Sort • e Export • q Quit • (Hold Shift to select text) ", Style::default().bg(Color::Rgb(49, 50, 68)).fg(Color::White))
     ];
     
     if app.is_searching {
@@ -67,12 +67,57 @@ pub fn format_raw_content(content: &serde_json::Value) -> String {
     "".to_string()
 }
 
-pub fn format_md_content(content: &serde_json::Value) -> String {
-    if let Some(s) = content.as_str() { return s.to_string(); }
-    if let Some(arr) = content.as_array() {
-        return arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("\n\n");
+fn truncate_json_strings(v: &mut serde_json::Value) {
+    match v {
+        serde_json::Value::String(s) => {
+            // Trim whitespace first to avoid empty space gaps
+            let trimmed = s.trim();
+            let newlines = trimmed.matches('\n').count();
+            if trimmed.len() > 1000 || newlines > 20 {
+                let truncated = trimmed.chars().take(1000).collect::<String>();
+                *s = format!("{} ...\n[Truncated {} bytes, {} lines. Press 'e' to export full session.]", truncated, s.len(), newlines);
+            } else {
+                *s = trimmed.to_string();
+            }
+        },
+
+        serde_json::Value::Array(a) => {
+            for item in a {
+                truncate_json_strings(item);
+            }
+        },
+        serde_json::Value::Object(o) => {
+            for (_, val) in o.iter_mut() {
+                truncate_json_strings(val);
+            }
+        },
+        _ => {}
     }
-    format!("```json\n{}\n```", serde_json::to_string_pretty(content).unwrap_or_default())
+}
+
+pub fn clean_json(v: &serde_json::Value) -> String {
+    let mut cloned = v.clone();
+    truncate_json_strings(&mut cloned);
+    let pretty = serde_json::to_string_pretty(&cloned).unwrap_or_default();
+    pretty.lines()
+        .filter(|l| !l.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn format_md_content(content: &serde_json::Value) -> String {
+    let raw = if let Some(s) = content.as_str() { s.to_string() }
+    else if let Some(arr) = content.as_array() {
+        arr.iter().filter_map(|v| v.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("\n")
+    } else {
+        let js = content.to_string();
+        if js.len() > 10_000 {
+            format!("[Large Content: {} bytes]", js.len())
+        } else {
+            format!("```json\n{}\n```", serde_json::to_string_pretty(content).unwrap_or_default())
+        }
+    };
+    raw.trim().to_string()
 }
 
 pub fn format_session_search(sess: &crate::models::Session) -> String {

@@ -99,12 +99,12 @@ pub fn render_infra_detail(f: &mut Frame, app: &App, area: Rect) {
             let critical = state.health.iter().filter(|i| i.severity == "Critical").count();
             let warnings = state.health.iter().filter(|i| i.severity == "Warning").count();
             let score = if critical > 0 { "POOR" } else if warnings > 5 { "FAIR" } else if warnings > 0 { "GOOD" } else { "EXCELLENT" };
-            markdown = format!("# Health Score: {}\n\n- **Critical Issues**: {}\n- **Warnings**: {}\n\n---\n\n", score, critical, warnings);
+            markdown = format!("# Health Score: {}\n**Critical**: {} • **Warnings**: {}\n---\n", score, critical, warnings);
             if let Some(rule) = sorted_rules.get(selected) {
                 title = format!(" {} ", rule);
-                markdown.push_str(&format!("## Rule: {}\n\n", rule));
+                markdown.push_str(&format!("## Rule: {}\n", rule));
                 for issue in &groups[*rule] {
-                    markdown.push_str(&format!("### {}\n- **Project**: {}\n- **File**: {}\n- **Severity**: {}\n\n", 
+                    markdown.push_str(&format!("### {}\n**Project**: {} • **File**: {} • **Severity**: {}\n", 
                         issue.message, issue.project, issue.file.as_deref().unwrap_or("N/A"), issue.severity));
                 }
             }
@@ -119,12 +119,12 @@ pub fn render_infra_detail(f: &mut Frame, app: &App, area: Rect) {
         View::MCP => {
             if let Some(s) = state.mcp_servers.get(selected) {
                 title = format!(" MCP: {} ", s.name);
-                markdown = format!("# MCP Server: {}\n\n", s.name);
+                markdown = format!("# MCP Server: {}\n", s.name);
                 if let Some(url) = &s.url { markdown.push_str(&format!("- **Remote URL**: {}\n", url)); }
                 if let Some(cmd) = &s.command { markdown.push_str(&format!("- **Local Command**: `{}`\n", cmd)); }
                 if !s.args.is_empty() { markdown.push_str(&format!("- **Arguments**: `{}`\n", s.args.join(" "))); }
                 if !s.env.is_empty() {
-                    markdown.push_str("\n### Environment Variables\n");
+                    markdown.push_str("\n### Environment\n");
                     for (k, v) in &s.env { markdown.push_str(&format!("- **{}**: `{}`\n", k, v)); }
                 }
             }

@@ -1,5 +1,5 @@
 use crate::app::{App, View};
-use crate::ui::components::{format_session_search, format_raw_content, format_md_content};
+use crate::ui::components::{format_session_search, format_raw_content, format_md_content, clean_json};
 use ratatui::{
     layout::Rect,
     style::Stylize,
@@ -75,10 +75,10 @@ pub fn render_explorer_detail(f: &mut Frame, app: &App, area: Rect) {
                     if let (Some(model), Some(tokens)) = (&msg.model, &msg.tokens) {
                         let pricing = if model.contains("flash") { (0.075, 0.30) } else { (3.50, 10.50) };
                         let cost = (tokens.input as f64 / 1_000_000.0 * pricing.0) + (tokens.output as f64 / 1_000_000.0 * pricing.1);
-                        markdown.push_str(&format!("*Model: {} • Tokens: {} • Cost: ${:.4}*\n\n", model, tokens.total, cost));
+                        markdown.push_str(&format!("*{} • {} tokens • ${:.4}*\n", model, tokens.total, cost));
                     }
                     markdown.push_str(&format_md_content(&msg.content));
-                    markdown.push_str("\n\n---\n\n");
+                    markdown.push_str("\n---\n");
                 }
             }
         },
@@ -97,11 +97,12 @@ pub fn render_explorer_detail(f: &mut Frame, app: &App, area: Rect) {
                 for msg in &sess.messages {
                     if let Some(calls) = &msg.tool_calls {
                         for tc in calls {
-                            markdown.push_str(&format!("### {} `{}`\n", tc.display_name.as_deref().unwrap_or(&tc.name), tc.status));
-                            markdown.push_str(&format!("**Arguments**:\n```json\n{}\n```\n\n", serde_json::to_string_pretty(&tc.args).unwrap_or_default()));
+                            markdown.push_str(&format!("### {} [{}]\n", tc.display_name.as_deref().unwrap_or(&tc.name), tc.status));
+                            markdown.push_str(&format!("```json\n{}\n```\n", clean_json(&tc.args)));
                             if let Some(res) = &tc.result {
-                                markdown.push_str(&format!("**Result**:\n```json\n{}\n```\n\n", serde_json::to_string_pretty(res).unwrap_or_default()));
+                                markdown.push_str(&format!("```json\n{}\n```\n", clean_json(res)));
                             }
+                            markdown.push_str("---\n");
                         }
                     }
                 }
@@ -110,10 +111,10 @@ pub fn render_explorer_detail(f: &mut Frame, app: &App, area: Rect) {
         View::Timeline => {
             if let Some(e) = state.timeline.get(selected) {
                 title = format!(" Timeline: {} ", e.project);
-                markdown = format!("# Event in {}\n\n- **Session ID**: {}\n- **Time**: {}\n\n---\n\n", 
+                markdown = format!("# Project: {}\n**Session ID**: {}\n**Time**: {}\n\n---\n", 
                     e.project, e.session.session_id, e.session.last_updated);
                 for msg in &e.session.messages {
-                    markdown.push_str(&format!("### {}\n{}\n\n", msg.msg_type, format_raw_content(&msg.content)));
+                    markdown.push_str(&format!("### {}\n{}\n", msg.msg_type, format_raw_content(&msg.content)));
                 }
             }
         },

@@ -15,8 +15,11 @@ pub fn get_stats_list_items<'a>(state: &'a State, sort_mode: ProjectSort) -> Vec
     // Sorting logic
     match sort_mode {
         ProjectSort::Date => {
-            // Already sorted by date in parser usually, but let's be explicit if needed
-            // Default order is fine.
+            projects.sort_by(|a, b| {
+                let a_last = a.sessions.iter().map(|s| s.last_updated).max();
+                let b_last = b.sessions.iter().map(|s| s.last_updated).max();
+                b_last.cmp(&a_last)
+            });
         }
         ProjectSort::Cost => {
             projects.sort_by(|a, b| {
@@ -63,7 +66,13 @@ pub fn render_stats_detail(f: &mut Frame, app: &App, area: Rect) {
     // We need to re-sort here too to match the sidebar if we want to show the correct detail
     let mut projects = state.projects.clone();
     match app.sort_mode {
-        ProjectSort::Date => {}
+        ProjectSort::Date => {
+            projects.sort_by(|a, b| {
+                let a_last = a.sessions.iter().map(|s| s.last_updated).max();
+                let b_last = b.sessions.iter().map(|s| s.last_updated).max();
+                b_last.cmp(&a_last)
+            });
+        }
         ProjectSort::Cost => {
             projects.sort_by(|a, b| {
                 let a_cost = state.stats.projects.get(&a.name).map(|s| s.cost).unwrap_or(0.0);
@@ -104,7 +113,7 @@ pub fn render_stats_detail(f: &mut Frame, app: &App, area: Rect) {
         .style(Style::default().fg(Color::Cyan));
     f.render_widget(sparkline, stats_chunks[0]);
 
-    let mut markdown = format!("# Workspace: {}\n\n- **Cost**: ${:.4}\n- **Tokens**: {}\n- **Input**: {}\n- **Output**: {}\n\n### Model Usage\n", 
+    let mut markdown = format!("# Workspace: {}\n**Cost**: ${:.4} • **Tokens**: {}\n**Input**: {} • **Output**: {}\n### Model Usage\n", 
         stats_data.name, stats_data.cost, stats_data.total_tokens, stats_data.input, stats_data.output);
     for (m, c) in &stats_data.models { markdown.push_str(&format!("- **{}**: {} turns\n", m, c)); }
 

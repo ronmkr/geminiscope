@@ -39,6 +39,7 @@ pub struct App {
     pub search_query: String,
     pub is_searching: bool,
     pub sort_mode: ProjectSort,
+    pub last_action_msg: Option<(String, std::time::Instant)>,
 }
 
 impl App {
@@ -53,6 +54,7 @@ impl App {
             search_query: String::new(),
             is_searching: false,
             sort_mode: ProjectSort::Date,
+            last_action_msg: None,
         }
     }
 
@@ -164,6 +166,7 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('e') => self.export_current_view(),
             KeyCode::Char('s') => {
                 self.sort_mode = match self.sort_mode {
                     ProjectSort::Date => ProjectSort::Cost,
@@ -241,6 +244,33 @@ impl App {
             let next = (current as i32 + delta).rem_euclid(count as i32) as usize;
             self.list_state.select(Some(next));
             self.detail_scroll = 0;
+        }
+    }
+
+    fn export_current_view(&mut self) {
+        if let Some(state) = &self.state {
+            let selected = self.list_state.selected().unwrap_or(0);
+            match self.view {
+                View::Chats | View::Tools | View::Timeline => {
+                    let filtered: Vec<_> = if self.search_query.is_empty() {
+                        state.all_sessions.iter().collect()
+                    } else {
+                        let query = self.search_query.to_lowercase();
+                        state.all_sessions.iter().filter(|s| {
+                            crate::ui::components::format_session_search(s).to_lowercase().contains(&query)
+                        }).collect()
+                    };
+                    if let Some(sess) = filtered.get(selected) {
+                        if let Ok(json) = serde_json::to_string_pretty(sess) {
+                            let filename = format!("geminiscope_session_{}.json", &sess.session_id[..8]);
+                            if std::fs::write(&filename, json).is_ok() {
+                                self.last_action_msg = Some((format!("󰄬 Exported to {}", filename), std::time::Instant::now()));
+                            }
+                        }
+                    }
+                },
+                _ => {}
+            }
         }
     }
 }

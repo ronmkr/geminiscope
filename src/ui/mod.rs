@@ -7,11 +7,10 @@ use crate::app::{App, View};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
-    text::{Span, Text},
+    text::{Span, Text, Line},
     widgets::{Block, Borders, List, Paragraph, Padding},
     Frame,
 };
-use ansi_to_tui::IntoText;
 
 pub fn render(f: &mut Frame, app: &mut App) {
     let has_critical = if let Some(state) = &app.state {
@@ -20,23 +19,33 @@ pub fn render(f: &mut Frame, app: &mut App) {
         false
     };
 
-    let top_constraints = if has_critical {
-        vec![Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)]
-    } else {
-        vec![Constraint::Min(0), Constraint::Length(1)]
-    };
+    let has_notif = app.last_action_msg.as_ref().map(|(_, t)| t.elapsed().as_secs() < 3).unwrap_or(false);
+
+    let mut constraints = vec![Constraint::Min(0), Constraint::Length(1)];
+    if has_critical { constraints.insert(0, Constraint::Length(1)); }
+    if has_notif { constraints.insert(0, Constraint::Length(1)); }
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(top_constraints)
+        .constraints(constraints)
         .split(f.area());
 
-    let (main_area, footer_area) = if has_critical {
-        components::render_security_banner(f, app, chunks[0]);
-        (chunks[1], chunks[2])
-    } else {
-        (chunks[0], chunks[1])
-    };
+    let mut current_idx = 0;
+    if has_notif {
+        if let Some((msg, _)) = &app.last_action_msg {
+            let p = Paragraph::new(Line::from(Span::styled(format!(" {} ", msg), Style::default().bg(Color::Green).fg(Color::Black).bold())));
+            f.render_widget(p, chunks[current_idx]);
+            current_idx += 1;
+        }
+    }
+
+    if has_critical {
+        components::render_security_banner(f, app, chunks[current_idx]);
+        current_idx += 1;
+    }
+
+    let main_area = chunks[current_idx];
+    let footer_area = chunks[current_idx + 1];
 
     let main_layout = Layout::default()
         .direction(Direction::Horizontal)
@@ -110,17 +119,78 @@ fn render_content(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
-/// Shared utility to render markdown content with Termimad
+/// Shared utility to render high-density text content with basic syntax highlighting
 pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdown: &str) {
-    let mut skin = termimad::MadSkin::default();
-    skin.bold.set_fg(crossterm::style::Color::Magenta);
-    skin.italic.set_fg(crossterm::style::Color::Cyan);
-    skin.set_headers_fg(crossterm::style::Color::Magenta);
-    let termimad_string = skin.term_text(markdown).to_string();
-    
-    let content_text = termimad_string.into_text().unwrap_or_else(|_| Text::from(markdown));
-    
-    let p = Paragraph::new(content_text)
+    // Increased limit to 500KB but optimized line loop
+    if markdown.len() > 500_000 {
+        let p = Paragraph::new(format!("[Content too large for TUI rendering: {} bytes. Press 'e' to export full session.]", markdown.len()))
+            .block(Block::default().title(format!(" {} ", title)).borders(Borders::ALL));
+        f.render_widget(p, area);
+        return;
+    }
+
+    let mut lines = Vec::new();
+    let mut in_code_block = false;
+
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() { 
+            // Avoid multiple empty lines
+            if lines.last().map(|l: &Line| l.spans.is_empty()).unwrap_or(true) {
+                continue;
+            }
+            lines.push(Line::from(""));
+            continue;
+        }
+
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            lines.push(Line::from("────────────────────────────────────────────────────────────────").dark_gray());
+            continue;
+        }
+
+        if trimmed.starts_with("# ") {
+            lines.push(Line::from(Span::styled(trimmed[2..].to_string(), Style::default().fg(Color::Magenta).bold())));
+        } else if trimmed.starts_with("## ") {
+            lines.push(Line::from(Span::styled(trimmed[3..].to_string(), Style::default().fg(Color::Magenta).bold())));
+        } else if trimmed.starts_with("### ") {
+            lines.push(Line::from(Span::styled(trimmed[4..].to_string(), Style::default().fg(Color::Cyan).bold())));
+        } else if trimmed == "---" {
+            lines.push(Line::from("────────────────────────────────────────────────────────────────").dark_gray());
+        } else if in_code_block || (trimmed.starts_with('{') || trimmed.starts_with('"') || trimmed.starts_with('}')) {
+            // Basic JSON/Code highlighting
+            let mut spans = Vec::new();
+            if trimmed.contains(':') {
+                let parts: Vec<&str> = line.splitn(2, ':').collect();
+                spans.push(Span::styled(parts[0].to_string(), Style::default().fg(Color::Cyan)));
+                spans.push(Span::raw(":"));
+                if parts.len() > 1 {
+                    spans.push(Span::styled(parts[1].to_string(), Style::default().fg(Color::Yellow)));
+                }
+            } else {
+                spans.push(Span::styled(line.to_string(), Style::default().fg(Color::Rgb(200, 200, 200))));
+            }
+            lines.push(Line::from(spans));
+        } else {
+            // Regular text with bold support
+            if trimmed.contains("**") {
+                let mut spans = Vec::new();
+                let parts: Vec<&str> = line.split("**").collect();
+                for (i, part) in parts.iter().enumerate() {
+                    if i % 2 == 1 {
+                        spans.push(Span::styled(part.to_string(), Style::default().bold().fg(Color::Yellow)));
+                    } else {
+                        spans.push(Span::raw(part.to_string()));
+                    }
+                }
+                lines.push(Line::from(spans));
+            } else {
+                lines.push(Line::from(line.to_string()));
+            }
+        }
+    }
+
+    let p = Paragraph::new(Text::from(lines))
         .wrap(ratatui::widgets::Wrap { trim: false })
         .scroll((app.detail_scroll, 0))
         .block(Block::default()
