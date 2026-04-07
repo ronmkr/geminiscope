@@ -1,67 +1,57 @@
 # 🔭 Geminiscope
 
-**Geminiscope** is a high-performance Rust TUI (Terminal User Interface) dashboard for [Gemini CLI](https://github.com/google/gemini-cli), providing real-time observability into AI sessions, costs, and system health.
-
-Built with Rust and `ratatui`, Geminiscope transforms your CLI interaction history into a structured, searchable, and visually rich analytical environment.
+**Geminiscope** is a high-performance, real-time observability dashboard for [Gemini CLI](https://github.com/google/gemini-cli). Built with Rust and `ratatui`, it provides deep insights into your AI-assisted development sessions, including cost analysis, token usage, and system health.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
-![Rust](https://img.shields.io/badge/rust-stable-brightgreen)
+![Rust](https://img.shields.io/badge/rust-1.80+-brightgreen)
+![Build](https://img.shields.io/badge/build-passing-brightgreen)
 
-## ✨ Features
+## 🚀 Key Capabilities
 
-- 🕵️ **Session Explorer:** Browse through chat history with `termimad` Markdown rendering.
-- ⚡ **Real-time Tracking:** Instant updates as you chat, powered by `notify` event-based log parsing.
-- 💰 **Cost Engine:** Track token usage and financial impact per model (Flash vs Pro).
-- 📈 **Interactive Analytics:** Drill down into project-based usage with sparklines and token trends.
-- 🔍 **Global Search:** Blazing fast search across all sessions, tools, and project hashes.
-- 🔒 **Secret Scanner:** Entropy-aware background scanning for leaked API keys or credentials.
-- 📡 **MCP Monitor:** Real-time health and status of your Model Context Protocol (MCP) servers.
-- 🧠 **Context Browser:** View your `GEMINI.md` memory and global system prompts.
-- 🗺️ **Plan Viewer:** Direct access to your implementation plans from `plans/*.md`.
+- ⚡ **Real-time Log Ingestion**: Uses `notify` for zero-latency synchronization with Gemini CLI logs.
+- 💰 **Financial Intelligence**: Dynamic pricing engine for Gemini Pro/Flash models with historical token tracking.
+- 🔍 **High-Density Custom Rendering**: A hand-optimized TUI renderer designed for maximum information density without external markdown overhead.
+- 🔒 **Entropy-Aware Security**: Background scanning for API keys and credentials using Shannon entropy analysis.
+- 📡 **MCP Observability**: Real-time status monitoring for Model Context Protocol (MCP) servers.
+- 📦 **Session Archiving**: Instant export of raw session data to JSON (`e` key) for offline analysis.
 
-## 🚀 Quick Start
+## 🛠️ Engineering Architecture
 
-### Installation
+Geminiscope is designed for engineers who value performance and reliability:
+
+- **Async Core**: Powered by `tokio`, log parsing and security scanning run in non-blocking background threads.
+- **Custom Render Pipeline**: Replaced generic markdown libraries with a specialized line-buffer renderer to eliminate vertical padding and maximize vertical space.
+- **Resilient Data Handling**: Intelligent truncation of massive JSON payloads (up to 500KB) ensures the UI remains responsive even during heavy file-reading operations.
+- **Modular View-Based Design**: Clean separation between state management (`app.rs`), data modeling (`models.rs`), and modular UI components (`src/ui/`).
+
+## 📥 Installation
 
 ```bash
 cargo install geminiscope
 ```
 
-*Note: Currently requires a pre-existing Gemini CLI installation to monitor.*
+*Prerequisite: An active installation of [Gemini CLI](https://github.com/google/gemini-cli).*
 
-### Usage
+## ⌨️ Controls
 
-Simply run:
-```bash
-geminiscope
-```
+| Key | Action |
+| :--- | :--- |
+| `1-9` | Switch between Views (Chats, Stats, MCP, etc.) |
+| `j/k`, `Arrows` | Navigate Sidebar |
+| `J/K`, `Alt+Arrows` | Scroll Detail Pane |
+| `/` | Global Search / Filter |
+| `s` | Cycle Sort Modes (Date, Cost, Tokens, Name) |
+| `e` | Export Current Session to JSON |
+| `q`, `Esc` | Quit / Back |
 
-### Keybindings
+## 🗺️ Roadmap
 
-- `j/k` or `Arrows`: Navigate lists
-- `Enter`: Select item
-- `/`: Open Global Search
-- `1-9`: Switch views (Explorer, Stats, MCP, etc.)
-- `Esc/q`: Exit or go back
-
-## 🛠️ Architecture
-
-Geminiscope is designed for performance and reliability:
-- **Async Ingestion:** Background parsing of JSON logs using `tokio` and `notify`.
-- **Modular TUI:** Separated models, parser, and rendering layers for high maintainability.
-- **Resilient UI:** Handles terminal resizing and massive log files gracefully.
-
-## 📝 Roadmap
-
-- [ ] Multi-Mode Sorting (Cost, Tokens, Date)
-- [ ] Exporting Session Summaries (Markdown/PDF)
-- [ ] Customizable Themes (`themes.json`)
-- [ ] Advanced Date Filtering
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request or open an Issue.
+- [x] Multi-mode sorting architecture.
+- [x] High-performance custom TUI rendering.
+- [x] Real-time security and health auditing.
+- [ ] Customizable theme engine (`themes.json`).
+- [ ] Cross-session diffing tools.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT © [Raunak Jyotishi](https://github.com/ronmkr)

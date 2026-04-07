@@ -20,3 +20,5 @@ target/
 debug.log
 .env
 screenshots
+GEMINI.md
+.geminignore
