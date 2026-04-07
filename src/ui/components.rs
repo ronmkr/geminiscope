@@ -2,7 +2,7 @@ use crate::app::{App, ProjectSort};
 use crate::ui::theme;
 use ratatui::{
     layout::{Rect, Alignment},
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -45,28 +45,144 @@ pub fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     let primary_color = theme::get_color(&theme.primary);
     let secondary_color = theme::get_color(&theme.secondary);
 
-    let mut spans = vec![
-        Span::styled(" 󰌒  1-9 View • j/k List • J/K Scroll • / Search • s Sort • e Export • q Quit • (Hold Shift to select text) ", Style::default().bg(sidebar_bg).fg(Color::White))
-    ];
+    let mut spans = if app.is_editing_setting {
+        vec![
+            Span::styled(" 󰏫 EDIT MODE: Type value and press Enter to save, Esc to cancel ", Style::default().bg(Color::Yellow).fg(Color::Black).bold()),
+            Span::styled(format!("  {} > ", app.setting_path.last().unwrap_or(&"setting".to_string())), Style::default().bg(sidebar_bg).fg(Color::White)),
+            Span::styled(format!(" {} ", app.edit_input), Style::default().bg(sidebar_bg).fg(primary_color).bold()),
+            Span::styled("█", Style::default().fg(primary_color).add_modifier(Modifier::SLOW_BLINK)),
+        ]
+    } else {
+        vec![
+            Span::styled(" 󰌒  1-9 View • j/k List • J/K Scroll • / Search • s Sort • e Export • ?: Help • q Quit ", Style::default().bg(sidebar_bg).fg(Color::White))
+        ]
+    };
     
-    if app.is_searching {
-        spans.push(Span::styled(format!(" 󰍉 /{} ", app.search_query), Style::default().bg(primary_color).fg(Color::White).bold()));
-    } else if !app.search_query.is_empty() {
-        spans.push(Span::styled(format!(" 󰍉 Filter: {} (Esc to clear) ", app.search_query), Style::default().bg(sidebar_bg).fg(secondary_color)));
-    }
+    if !app.is_editing_setting {
+        if app.is_searching {
+            spans.push(Span::styled(format!(" 󰍉 /{} ", app.search_query), Style::default().bg(primary_color).fg(Color::White).bold()));
+        } else if !app.search_query.is_empty() {
+            spans.push(Span::styled(format!(" 󰍉 Filter: {} (Esc to clear) ", app.search_query), Style::default().bg(sidebar_bg).fg(secondary_color)));
+        }
 
-    // Add sort indicator if in Stats view
-    if app.view == crate::app::View::Stats {
-        let sort_label = match app.sort_mode {
-            ProjectSort::Date => "Date",
-            ProjectSort::Cost => "Cost",
-            ProjectSort::Tokens => "Tokens",
-            ProjectSort::Name => "Name",
-        };
-        spans.push(Span::styled(format!(" 󰒺 Sort: {} ", sort_label), Style::default().bg(secondary_color).fg(Color::Black).bold()));
+        // Add sort indicator if in Stats view
+        if app.view == crate::app::View::Stats {
+            let sort_label = match app.sort_mode {
+                ProjectSort::Date => "Date",
+                ProjectSort::Cost => "Cost",
+                ProjectSort::Tokens => "Tokens",
+                ProjectSort::Name => "Name",
+            };
+            spans.push(Span::styled(format!(" 󰒺 Sort: {} ", sort_label), Style::default().bg(secondary_color).fg(Color::Black).bold()));
+        }
     }
 
     f.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+pub fn render_help_modal(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let vertical = Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([
+            ratatui::layout::Constraint::Percentage(20),
+            ratatui::layout::Constraint::Percentage(60),
+            ratatui::layout::Constraint::Percentage(20),
+        ])
+        .split(area);
+    let horizontal = Layout::default()
+        .direction(ratatui::layout::Direction::Horizontal)
+        .constraints([
+            ratatui::layout::Constraint::Percentage(25),
+            ratatui::layout::Constraint::Percentage(50),
+            ratatui::layout::Constraint::Percentage(25),
+        ])
+        .split(vertical[1]);
+    let help_area = horizontal[1];
+
+    let theme = app.state.as_ref().map(|s| s.theme.clone()).unwrap_or_default();
+    let primary_color = theme::get_color(&theme.primary);
+
+    let block = Block::default()
+        .title(Span::styled(" 󰋗 GEMINISCOPE HELP ", Style::default().fg(primary_color).bold()))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(primary_color))
+        .bg(Color::Rgb(20, 20, 20));
+
+    let help_text = vec![
+        Line::from(vec![Span::styled(" Navigation ", Style::default().fg(primary_color).bold())]),
+        Line::from(vec![Span::styled("  j / ↓   ", Style::default().fg(Color::Yellow)), Span::raw("  Move cursor down")]),
+        Line::from(vec![Span::styled("  k / ↑   ", Style::default().fg(Color::Yellow)), Span::raw("  Move cursor up")]),
+        Line::from(vec![Span::styled("  J / K   ", Style::default().fg(Color::Yellow)), Span::raw("  Scroll detail view")]),
+        Line::from(vec![Span::styled("  Alt+j/k ", Style::default().fg(Color::Yellow)), Span::raw("  Precise scroll")]),
+        Line::from(""),
+        Line::from(vec![Span::styled(" Views ", Style::default().fg(primary_color).bold())]),
+        Line::from(vec![Span::styled("  1       ", Style::default().fg(Color::Yellow)), Span::raw("  Chats (Conversations)")]),
+        Line::from(vec![Span::styled("  2       ", Style::default().fg(Color::Yellow)), Span::raw("  Stats (Costs/Tokens)")]),
+        Line::from(vec![Span::styled("  3       ", Style::default().fg(Color::Yellow)), Span::raw("  Tools (MDC/Functions)")]),
+        Line::from(vec![Span::styled("  4-9     ", Style::default().fg(Color::Yellow)), Span::raw("  Memory, Plans, Health, etc")]),
+        Line::from(vec![Span::styled("  0       ", Style::default().fg(Color::Yellow)), Span::raw("  Settings")]),
+        Line::from(""),
+        Line::from(vec![Span::styled(" Actions ", Style::default().fg(primary_color).bold())]),
+        Line::from(vec![Span::styled("  /       ", Style::default().fg(Color::Yellow)), Span::raw("  Search/Filter current view")]),
+        Line::from(vec![Span::styled("  s       ", Style::default().fg(Color::Yellow)), Span::raw("  Toggle sort (Stats view)")]),
+        Line::from(vec![Span::styled("  e       ", Style::default().fg(Color::Yellow)), Span::raw("  Export view to JSON file")]),
+        Line::from(vec![Span::styled("  Enter   ", Style::default().fg(Color::Yellow)), Span::raw("  Edit selected setting")]),
+        Line::from(vec![Span::styled("  q / Esc ", Style::default().fg(Color::Yellow)), Span::raw("  Close Help / Quit App")]),
+        Line::from(""),
+        Line::from(vec![Span::styled(" Icons ", Style::default().fg(primary_color).bold())]),
+        Line::from(vec![Span::raw("  󰭻 Chats  󰄦 Stats  󰓙 Tools  󰤄 Memory  󰏚 Plans ")]),
+        Line::from(vec![Span::raw("  󰓚 Health  󰃭 Timeline  󰄦 Skills  󰒄 MCP  󰒓 Settings ")]),
+    ];
+
+    let p = Paragraph::new(help_text)
+        .block(block)
+        .alignment(Alignment::Left)
+        .wrap(ratatui::widgets::Wrap { trim: false });
+
+    f.render_widget(ratatui::widgets::Clear, help_area); // Clear background
+    f.render_widget(p, help_area);
+}
+
+use ratatui::layout::Layout;
+
+pub fn render_setting_edit_modal(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let vertical = Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([
+            ratatui::layout::Constraint::Percentage(40),
+            ratatui::layout::Constraint::Length(3),
+            ratatui::layout::Constraint::Percentage(40),
+        ])
+        .split(area);
+    let horizontal = Layout::default()
+        .direction(ratatui::layout::Direction::Horizontal)
+        .constraints([
+            ratatui::layout::Constraint::Percentage(20),
+            ratatui::layout::Constraint::Percentage(60),
+            ratatui::layout::Constraint::Percentage(20),
+        ])
+        .split(vertical[1]);
+    let input_area = horizontal[1];
+
+    let theme = app.state.as_ref().map(|s| s.theme.clone()).unwrap_or_default();
+    let primary_color = theme::get_color(&theme.primary);
+
+    let title = format!(" 󰏫 Edit Setting: {} ", app.setting_path.last().unwrap_or(&"setting".to_string()));
+    let block = Block::default()
+        .title(Span::styled(title, Style::default().fg(primary_color).bold()))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(primary_color))
+        .bg(Color::Rgb(30, 30, 30));
+
+    let p = Paragraph::new(Line::from(vec![
+        Span::styled(format!(" {} ", app.edit_input), Style::default().fg(Color::White).bold()),
+        Span::styled("█", Style::default().fg(primary_color).add_modifier(Modifier::SLOW_BLINK)),
+    ])).block(block);
+
+    f.render_widget(ratatui::widgets::Clear, input_area);
+    f.render_widget(p, input_area);
 }
 
 pub fn format_raw_content(content: &serde_json::Value) -> String {

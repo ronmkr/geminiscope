@@ -61,6 +61,14 @@ pub fn render(f: &mut Frame, app: &mut App) {
     render_sidebar(f, app, main_layout[1]);
     render_content(f, app, main_layout[2]);
     components::render_footer(f, app, footer_area);
+
+    if app.is_showing_help {
+        components::render_help_modal(f, app);
+    }
+
+    if app.is_editing_setting {
+        components::render_setting_edit_modal(f, app);
+    }
 }
 
 fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
@@ -106,12 +114,46 @@ fn render_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
         _ => infrastructure::get_infra_list_items(state, view),
     };
 
-    let list = List::new(items)
-        .block(block)
-        .highlight_style(Style::default().bg(sidebar_bg).fg(Color::White))
-        .highlight_symbol(" ");
+    if items.is_empty() {
+        let msg = if !app.search_query.is_empty() {
+            format!("\n\n  󰍉 No results for\n  '{}'", app.search_query)
+        } else {
+            "\n\n  󰩈 No items found".to_string()
+        };
+        f.render_widget(Paragraph::new(msg).dark_gray(), area);
+    } else {
+        let list_len = items.len();
+        let list = List::new(items)
+            .block(block)
+            .highlight_style(Style::default().bg(sidebar_bg).fg(Color::White))
+            .highlight_symbol(" ");
+        f.render_stateful_widget(list, area, &mut app.list_state);
 
-    f.render_stateful_widget(list, area, &mut app.list_state);
+        let visible_height = area.height.saturating_sub(2);
+        if list_len as u16 > visible_height {
+            use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+            let mut scrollbar_state = ScrollbarState::default()
+                .content_length(list_len)
+                .position(app.list_state.selected().unwrap_or(0));
+
+            let scrollbar = Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(Some("▲"))
+                .end_symbol(Some("▼"))
+                .track_symbol(Some("│"))
+                .thumb_symbol("█")
+                .style(Style::default().fg(primary_color));
+
+            f.render_stateful_widget(
+                scrollbar,
+                area.inner(ratatui::layout::Margin {
+                    vertical: 1,
+                    horizontal: 0,
+                }),
+                &mut scrollbar_state,
+            );
+        }
+    }
 }
 
 fn render_content(f: &mut Frame, app: &App, area: Rect) {
@@ -132,6 +174,18 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
     let sidebar_bg = theme::get_color(&theme.sidebar_bg);
     let json_key_color = theme::get_color(&theme.json_key);
     let json_value_color = theme::get_color(&theme.json_value);
+
+    if markdown.trim().is_empty() {
+        let p = Paragraph::new("\n\n󰋗 Select an item from the sidebar to view details.")
+            .alignment(ratatui::layout::Alignment::Center)
+            .dark_gray()
+            .block(Block::default()
+                .title(Span::styled(format!(" {} ", title), Style::default().fg(primary_color).bold()))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(sidebar_bg)));
+        f.render_widget(p, area);
+        return;
+    }
 
     // Increased limit to 500KB but optimized line loop
     if markdown.len() > 500_000 {
@@ -202,6 +256,7 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
         }
     }
 
+    let line_count = lines.len();
     let p = Paragraph::new(Text::from(lines))
         .wrap(ratatui::widgets::Wrap { trim: false })
         .scroll((app.detail_scroll, 0))
@@ -211,4 +266,29 @@ pub fn render_markdown(f: &mut Frame, app: &App, area: Rect, title: &str, markdo
             .border_style(Style::default().fg(sidebar_bg))
             .padding(Padding::uniform(1)));
     f.render_widget(p, area);
+
+    let visible_height = area.height.saturating_sub(2);
+    if line_count as u16 > visible_height {
+        use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+        let mut scrollbar_state = ScrollbarState::default()
+            .content_length(line_count)
+            .position(app.detail_scroll as usize);
+
+        let scrollbar = Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("▲"))
+            .end_symbol(Some("▼"))
+            .track_symbol(Some("│"))
+            .thumb_symbol("█")
+            .style(Style::default().fg(primary_color));
+
+        f.render_stateful_widget(
+            scrollbar,
+            area.inner(ratatui::layout::Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut scrollbar_state,
+        );
+    }
 }

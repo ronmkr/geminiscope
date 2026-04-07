@@ -1,57 +1,42 @@
-# 🔭 Geminiscope
+# Geminiscope: High-Performance Rust TUI Dashboard for Gemini CLI
 
-**Geminiscope** is a high-performance, real-time observability dashboard for [Gemini CLI](https://github.com/google/gemini-cli). Built with Rust and `ratatui`, it provides deep insights into your AI-assisted development sessions, including cost analysis, token usage, and system health.
+Geminiscope is an observability dashboard for your AI development workflow. It provides real-time insights into your session history, costs, and token usage through a highly interactive terminal interface.
 
-![License](https://img.shields.io/badge/license-MIT-blue)
-![Rust](https://img.shields.io/badge/rust-1.80+-brightgreen)
-![Build](https://img.shields.io/badge/build-passing-brightgreen)
+![Geminiscope Preview](screenshots/preview.png)
 
-## 🚀 Key Capabilities
+## 🚀 Key Features
 
-- ⚡ **Real-time Log Ingestion**: Uses `notify` for zero-latency synchronization with Gemini CLI logs.
-- 💰 **Financial Intelligence**: Dynamic pricing engine for Gemini Pro/Flash models with historical token tracking.
-- 🔍 **High-Density Custom Rendering**: A hand-optimized TUI renderer designed for maximum information density without external markdown overhead.
-- 🔒 **Entropy-Aware Security**: Background scanning for API keys and credentials using Shannon entropy analysis.
-- 📡 **MCP Observability**: Real-time status monitoring for Model Context Protocol (MCP) servers.
-- 📦 **Session Archiving**: Instant export of raw session data to JSON (`e` key) for offline analysis.
+*   **Session Explorer**: High-density custom renderer with syntax highlighting for JSON and Markdown.
+*   **Real-time Observability**: Integrated file-system watcher (`notify`) for instant UI updates as you interact with Gemini CLI.
+*   **Advanced Cost Tracking**: Pricing engine for Gemini Pro/Flash models with historical token usage trends.
+*   **Interactive Theme Engine**: Support for custom color schemes via `~/.gemini/themes.json`.
+*   **Smart Navigation**: Vim-like bindings (`j/k`), global search (`/`), and precise scrolling (`J/K`).
+*   **Health & Security Scanning**: Shannon Entropy scanning to detect leaked secrets or API keys in your chat history.
+*   **Project Context**: Automatic discovery of `GEMINI.md` files and development plans across your local workspaces.
 
-## 🛠️ Engineering Architecture
-
-Geminiscope is designed for engineers who value performance and reliability:
-
-- **Async Core**: Powered by `tokio`, log parsing and security scanning run in non-blocking background threads.
-- **Custom Render Pipeline**: Replaced generic markdown libraries with a specialized line-buffer renderer to eliminate vertical padding and maximize vertical space.
-- **Resilient Data Handling**: Intelligent truncation of massive JSON payloads (up to 500KB) ensures the UI remains responsive even during heavy file-reading operations.
-- **Modular View-Based Design**: Clean separation between state management (`app.rs`), data modeling (`models.rs`), and modular UI components (`src/ui/`).
-
-## 📥 Installation
-
-```bash
-cargo install geminiscope
-```
-
-*Prerequisite: An active installation of [Gemini CLI](https://github.com/google/gemini-cli).*
-
-## ⌨️ Controls
+## 🛠️ Keybindings
 
 | Key | Action |
 | :--- | :--- |
-| `1-9` | Switch between Views (Chats, Stats, MCP, etc.) |
-| `j/k`, `Arrows` | Navigate Sidebar |
-| `J/K`, `Alt+Arrows` | Scroll Detail Pane |
-| `/` | Global Search / Filter |
-| `s` | Cycle Sort Modes (Date, Cost, Tokens, Name) |
-| `e` | Export Current Session to JSON |
-| `q`, `Esc` | Quit / Back |
+| `?` / `h` | **Open Help Menu** (Detailed documentation) |
+| `1-9` | Switch between Views (Chats, Stats, Tools, Health, etc.) |
+| `0` | **Settings View** (Interactive configuration editing) |
+| `j` / `k` | Move cursor Up/Down |
+| `J` / `K` | Scroll detail view Up/Down |
+| `/` | Search/Filter current view |
+| `s` | Cycle sort modes (Date, Cost, Tokens, Name) |
+| `e` | Export raw session/view to JSON |
+| `q` | Quit Application |
 
-## 🗺️ Roadmap
+## 📦 Installation
 
-- [x] Multi-mode sorting architecture.
-- [x] High-performance custom TUI rendering.
-- [x] Real-time security and health auditing.
-- [ ] Customizable theme engine (`themes.json`).
-- [ ] Cross-session diffing tools.
+```bash
+cargo install --path .
+```
 
-## 📄 License
+## 🎨 Configuration
 
-MIT © [Raunak Jyotishi](https://github.com/ronmkr)
+Geminiscope stores its configuration in `~/.gemini/settings.json`. You can also define custom themes in `~/.gemini/themes.json`.
+
+---
+*Built with Rust, Ratatui, and Tokio.*

@@ -16,6 +16,9 @@ Geminiscope is a high-performance Rust TUI dashboard for Gemini CLI, providing r
 | **Secret Scanning** | ✅ Done | Entropy-aware background scan of `chats/*.json`. |
 | **Session Export** | ✅ Done | `e` key to export raw un-truncated JSON for large logs. |
 | **Notification System**| ✅ Done | Immediate feedback banner for file operations. |
+| **Help Modal** | ✅ Done | Press `?` or `h` for integrated documentation. |
+| **Interactive Settings**| ✅ Done | Edit `settings.json` live via TUI with validation. |
+| **Theme Engine** | ✅ Done | Multi-theme support through `themes.json`. |
 
 ## 🛠️ Engineering Specs & Performance
 
@@ -23,6 +26,7 @@ Geminiscope is a high-performance Rust TUI dashboard for Gemini CLI, providing r
 To eliminate the vertical padding issues inherent in standard markdown libraries, Geminiscope uses a specialized line-buffer renderer. This allows for:
 - **Maximum Density**: Multiple blocks of content (JSON, Headers, Text) are collapsed into a single cohesive view.
 - **Dynamic Syntax Highlighting**: Real-time parsing of JSON structures to provide color-coded keys and values without blocking the UI thread.
+- **Visual Feedback**: Real-time scrollbars and empty-state placeholders.
 
 ### 2. High-Volume Data Strategy
 AI logs can grow to several megabytes. Geminiscope maintains performance through:
@@ -34,11 +38,11 @@ AI logs can grow to several megabytes. Geminiscope maintains performance through
 
 ### 1. Architectural Refactoring
 - [x] **Modular UI**: Decoupled UI into specialized sub-modules (`explorer`, `stats`, `infrastructure`).
-- [ ] **Parser Decomposition**: Move specialized handlers (MCP, Session, Tokens) into a dedicated `src/parser/` module.
+- [x] **Parser Decomposition**: Moved specialized handlers (MCP, Session, Tokens, Config, Project) into dedicated modules.
 
 ### 2. Advanced Features
-- [ ] **Theme Engine**: Support for `themes.json` to allow user-defined color schemes.
 - [ ] **Session Diffing**: Compare two AI turns to see how prompts or parameters changed.
+- [ ] **Remote MCP Dashboard**: Live health monitoring of remote MCP servers.
 
 ## 🛠️ Tech Stack Notes
 - **Language**: Rust

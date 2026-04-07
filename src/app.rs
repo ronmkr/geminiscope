@@ -40,6 +40,12 @@ pub struct App {
     pub is_searching: bool,
     pub sort_mode: ProjectSort,
     pub last_action_msg: Option<(String, std::time::Instant)>,
+    
+    // Settings Editing
+    pub is_editing_setting: bool,
+    pub edit_input: String,
+    pub setting_path: Vec<String>,
+    pub is_showing_help: bool,
 }
 
 impl App {
@@ -55,6 +61,10 @@ impl App {
             is_searching: false,
             sort_mode: ProjectSort::Date,
             last_action_msg: None,
+            is_editing_setting: false,
+            edit_input: String::new(),
+            setting_path: Vec::new(),
+            is_showing_help: false,
         }
     }
 
@@ -64,6 +74,7 @@ impl App {
     {
         let (tx, mut rx) = mpsc::channel(10);
         let (refresh_tx, mut refresh_rx) = mpsc::channel::<()>(1);
+        let (save_tx, mut save_rx) = mpsc::channel::<serde_json::Value>(1);
         let parser = Parser::new()?;
         let base_dir = parser.base_dir.clone();
 
@@ -80,21 +91,31 @@ impl App {
         }
 
         // 2. Background Sync Task
+        let p_save = Parser::new()?;
+        let p_refresh = Parser::new()?;
         tokio::spawn(async move {
             // Initial load
-            if let Ok(new_state) = parser.get_full_state() {
+            if let Ok(new_state) = p_refresh.get_full_state() {
                 let _ = tx.send(new_state).await;
             }
 
-            // Watch for changes
-            while let Some(_) = refresh_rx.recv().await {
-                // Debounce: wait a bit for more writes to finish
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                // Drain any extra signals during sleep
-                while let Ok(_) = refresh_rx.try_recv() {}
-
-                if let Ok(new_state) = parser.get_full_state() {
-                    let _ = tx.send(new_state).await;
+            loop {
+                tokio::select! {
+                    Some(_) = refresh_rx.recv() => {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        while let Ok(_) = refresh_rx.try_recv() {}
+                        if let Ok(new_state) = p_refresh.get_full_state() {
+                            let _ = tx.send(new_state).await;
+                        }
+                    }
+                    Some(settings) = save_rx.recv() => {
+                        let _ = p_save.save_settings(&settings);
+                        // Trigger immediate refresh after save
+                        if let Ok(new_state) = p_refresh.get_full_state() {
+                            let _ = tx.send(new_state).await;
+                        }
+                    }
+                    else => break,
                 }
             }
         });
@@ -106,7 +127,7 @@ impl App {
                 match event::read()? {
                     Event::Key(key) => {
                         if key.kind == KeyEventKind::Press {
-                            self.handle_key(key);
+                            self.handle_key(key, &save_tx);
                         }
                     }
                     Event::Mouse(mouse) => {
@@ -141,7 +162,29 @@ impl App {
         Ok(())
     }
 
-    fn handle_key(&mut self, key: KeyEvent) {
+    fn handle_key(&mut self, key: KeyEvent, save_tx: &mpsc::Sender<serde_json::Value>) {
+        if self.is_showing_help {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('q') => self.is_showing_help = false,
+                _ => {}
+            }
+            return;
+        }
+
+        if self.is_editing_setting {
+            match key.code {
+                KeyCode::Esc => self.is_editing_setting = false,
+                KeyCode::Enter => {
+                    self.commit_setting_edit(save_tx);
+                    self.is_editing_setting = false;
+                }
+                KeyCode::Char(c) => self.edit_input.push(c),
+                KeyCode::Backspace => { self.edit_input.pop(); }
+                _ => {}
+            }
+            return;
+        }
+
         if self.is_searching {
             match key.code {
                 KeyCode::Esc => {
@@ -166,6 +209,13 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Esc => {
+                if !self.search_query.is_empty() {
+                    self.search_query.clear();
+                    self.list_state.select(Some(0));
+                }
+            }
+            KeyCode::Char('?') | KeyCode::Char('h') => self.is_showing_help = true,
             KeyCode::Char('e') => self.export_current_view(),
             KeyCode::Char('s') => {
                 self.sort_mode = match self.sort_mode {
@@ -189,6 +239,11 @@ impl App {
             KeyCode::Char('8') => { self.view = View::Skills; self.reset_view(); }
             KeyCode::Char('9') => { self.view = View::MCP; self.reset_view(); }
             KeyCode::Char('0') => { self.view = View::Settings; self.reset_view(); }
+            KeyCode::Enter => {
+                if self.view == View::Settings {
+                    self.start_setting_edit(save_tx);
+                }
+            }
             KeyCode::Down | KeyCode::Char('j') => {
                 if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) || key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
                     self.detail_scroll = self.detail_scroll.saturating_add(1);
@@ -237,13 +292,96 @@ impl App {
                 View::Timeline => state.timeline.len(),
                 View::Skills => state.skills.len(),
                 View::MCP => state.mcp_servers.len(),
-                View::Settings => state.settings.as_object().map_or(0, |o| o.len()),
+                View::Settings => {
+                    let mut count = 0;
+                    let mut last_section = String::new();
+                    for (path, _, _) in crate::ui::infrastructure::get_all_settings(state) {
+                        let section = path.split('.').next().unwrap_or("").to_uppercase();
+                        if section != last_section {
+                            count += 1; // Section header
+                            last_section = section;
+                        }
+                        count += 1; // Setting item
+                    }
+                    count
+                },
             };
             if count == 0 { return; }
             let current = self.list_state.selected().unwrap_or(0);
-            let next = (current as i32 + delta).rem_euclid(count as i32) as usize;
+            let mut next = (current as i32 + delta).rem_euclid(count as i32) as usize;
+            
+            // Skip over non-selectable headers in settings view
+            if self.view == View::Settings {
+                if crate::ui::infrastructure::get_setting_at_index(state, next).is_none() {
+                    next = (next as i32 + delta.signum()).rem_euclid(count as i32) as usize;
+                }
+            }
+
             self.list_state.select(Some(next));
             self.detail_scroll = 0;
+        }
+    }
+
+    fn start_setting_edit(&mut self, save_tx: &mpsc::Sender<serde_json::Value>) {
+        if let Some(state) = &self.state {
+            let selected = self.list_state.selected().unwrap_or(0);
+            if let Some((path, val, _)) = crate::ui::infrastructure::get_setting_at_index(state, selected) {
+                self.setting_path = path.split('.').map(|s| s.to_string()).collect();
+                match val {
+                    serde_json::Value::Bool(b) => {
+                        let mut new_settings = state.settings.clone();
+                        self.set_nested_value(&mut new_settings, &self.setting_path, serde_json::Value::Bool(!b));
+                        let _ = save_tx.try_send(new_settings);
+                        self.last_action_msg = Some((format!("󰄬 Toggled {} to {}", path, !b), std::time::Instant::now()));
+                    },
+                    serde_json::Value::String(s) => {
+                        self.is_editing_setting = true;
+                        self.edit_input = s.clone();
+                    },
+                    serde_json::Value::Number(n) => {
+                        self.is_editing_setting = true;
+                        self.edit_input = n.to_string();
+                    },
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn set_nested_value(&self, root: &mut serde_json::Value, path: &[String], val: serde_json::Value) {
+        if !root.is_object() {
+            *root = serde_json::json!({});
+        }
+        let mut curr = root;
+        for i in 0..path.len() {
+            let key = &path[i];
+            if i == path.len() - 1 {
+                curr[key.clone()] = val;
+                return;
+            }
+            if !curr.get(key).map_or(false, |v| v.is_object()) {
+                curr[key.clone()] = serde_json::json!({});
+            }
+            curr = curr.get_mut(key).unwrap();
+        }
+    }
+
+    fn commit_setting_edit(&mut self, save_tx: &mpsc::Sender<serde_json::Value>) {
+        if let Some(state) = &mut self.state {
+            let mut settings = state.settings.clone();
+            
+            // Try to parse number if it looks like one
+            let new_val = if let Ok(n) = self.edit_input.parse::<i64>() {
+                serde_json::Value::Number(n.into())
+            } else if let Ok(f) = self.edit_input.parse::<f64>() {
+                serde_json::Value::from(f)
+            } else {
+                serde_json::Value::String(self.edit_input.clone())
+            };
+
+            self.set_nested_value(&mut settings, &self.setting_path, new_val);
+            let _ = save_tx.try_send(settings);
+            self.last_action_msg = Some((format!("󰄬 Updated {}", self.setting_path.last().unwrap_or(&"setting".to_string())), std::time::Instant::now()));
         }
     }
 
